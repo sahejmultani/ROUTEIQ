@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import dynamic from "next/dynamic";
 import axios from "axios";
 import "leaflet/dist/leaflet.css";
@@ -26,11 +26,45 @@ interface HeatPoint {
 
 export default function Home() {
   const [points, setPoints] = useState<HeatPoint[]>([]);
+  const [center, setCenter] = useState<[number, number]>([43.6, -79.58]);
+  const [zoom, setZoom] = useState(12);
+  const mapRef = useRef<any>(null);
 
   useEffect(() => {
     axios
       .get<HeatPoint[]>("/api/heatmap")
-      .then((r) => setPoints(r.data))
+      .then((r) => {
+        setPoints(r.data);
+        
+        // Calculate bounding box
+        if (r.data.length > 0) {
+          const lats = r.data.map((p) => p.lat);
+          const lngs = r.data.map((p) => p.lng);
+          
+          const minLat = Math.min(...lats);
+          const maxLat = Math.max(...lats);
+          const minLng = Math.min(...lngs);
+          const maxLng = Math.max(...lngs);
+          
+          // Calculate center
+          const centerLat = (minLat + maxLat) / 2;
+          const centerLng = (minLng + maxLng) / 2;
+          setCenter([centerLat, centerLng]);
+          
+          // Calculate zoom based on spread
+          const latSpan = maxLat - minLat;
+          const lngSpan = maxLng - minLng;
+          const maxSpan = Math.max(latSpan, lngSpan);
+          
+          // Rough zoom calculation (adjust as needed)
+          let calculatedZoom = 12;
+          if (maxSpan > 0.5) calculatedZoom = 11;
+          if (maxSpan > 1) calculatedZoom = 10;
+          if (maxSpan < 0.1) calculatedZoom = 14;
+          
+          setZoom(calculatedZoom);
+        }
+      })
       .catch(console.error);
   }, []);
 
@@ -58,7 +92,7 @@ export default function Home() {
       >
         <h1 style={{ margin: 0, fontSize: "1.2rem" }}>RouteIQ Heatmap</h1>
       </header>
-      <MapContainer center={[37.77, -122.42]} zoom={12} style={{ height: "100%" }}>
+      <MapContainer ref={mapRef} center={center} zoom={zoom} style={{ height: "100%" }}>
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution="&copy; OpenStreetMap contributors"
