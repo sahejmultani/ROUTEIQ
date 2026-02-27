@@ -1,225 +1,171 @@
-import { useEffect, useState, useRef } from "react";
-import dynamic from "next/dynamic";
-import axios from "axios";
-import "leaflet/dist/leaflet.css";
-
-// react-leaflet must be dynamically imported because it uses window
-const MapContainer = dynamic(
-  () => import("react-leaflet").then((mod) => mod.MapContainer),
-  { ssr: false }
-);
-const TileLayer = dynamic(
-  () => import("react-leaflet").then((mod) => mod.TileLayer),
-  { ssr: false }
-);
-const CircleMarker = dynamic(
-  () => import("react-leaflet").then((mod) => mod.CircleMarker),
-  { ssr: false }
-);
-
-interface HeatPoint {
-  id: string;
-  lat: number;
-  lng: number;
-  risk_score: number;
-  event_count: number;
-  concentration: number;
-}
+import Link from "next/link";
 
 export default function Home() {
-  const [points, setPoints] = useState<HeatPoint[]>([]);
-  const [center, setCenter] = useState<[number, number]>([43.6, -79.58]);
-  const [zoom, setZoom] = useState(12);
-  const mapRef = useRef<any>(null);
-
-  useEffect(() => {
-    console.log("Fetching heatmap data...");
-    axios
-      .get<HeatPoint[]>("/api/heatmap", { timeout: 35000 })
-      .then((r) => {
-        console.log("Received data:", r.data);
-        setPoints(r.data);
-        
-        // Calculate bounding box
-        if (r.data.length > 0) {
-          const lats = r.data.map((p) => p.lat);
-          const lngs = r.data.map((p) => p.lng);
-          
-          const minLat = Math.min(...lats);
-          const maxLat = Math.max(...lats);
-          const minLng = Math.min(...lngs);
-          const maxLng = Math.max(...lngs);
-          
-          // Calculate center
-          const centerLat = (minLat + maxLat) / 2;
-          const centerLng = (minLng + maxLng) / 2;
-          setCenter([centerLat, centerLng]);
-          
-          // Calculate zoom based on spread
-          const latSpan = maxLat - minLat;
-          const lngSpan = maxLng - minLng;
-          const maxSpan = Math.max(latSpan, lngSpan);
-          
-          // Rough zoom calculation (adjust as needed)
-          let calculatedZoom = 12;
-          if (maxSpan > 0.5) calculatedZoom = 11;
-          if (maxSpan > 1) calculatedZoom = 10;
-          if (maxSpan < 0.1) calculatedZoom = 14;
-          
-          setZoom(calculatedZoom);
-          console.log("Map centered at", centerLat, centerLng, "zoom", calculatedZoom);
-        }
-      })
-      .catch((error) => {
-        console.error("Error fetching heatmap:", error);
-      });
-  }, []);
-
-  const colorForRisk = (r: number) => {
-    // Modern gradient: low risk (blue) → medium (cyan/green) → high risk (red/dark)
-    if (r < 0.2) return "#3b82f6"; // Blue - minimal risk
-    if (r < 0.4) return "#06b6d4"; // Cyan - low risk
-    if (r < 0.6) return "#eab308"; // Yellow - medium risk
-    if (r < 0.8) return "#f97316"; // Orange - high risk
-    return "#dc2626"; // Red - critical risk
-  };
-
-  // Larger radius based on concentration and event count
-  const radiusForCluster = (concentration: number, eventCount: number) => {
-    // Base radius 20-120px based on concentration
-    return 20 + concentration * 100;
-  };
-
-  // Opacity based on concentration intensity
-  const opacityForCluster = (concentration: number) => {
-    return 0.3 + concentration * 0.5; // 0.3 - 0.8
-  };
-
   return (
-    <div style={{ height: "100vh", width: "100%", position: "relative" }}>
-      <header
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          padding: "12px 20px",
-          background: "#ffffff",
-          color: "#1f2937",
-          zIndex: 1000,
-          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
-          borderBottom: "1px solid #e5e7eb",
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 600, color: "#1f2937" }}>
-          RouteIQ Heatmap
-        </h1>
-        <p style={{ margin: "4px 0 0 0", fontSize: "0.85rem", color: "#6b7280" }}>
-          Fleet risk analysis & concentration zones
-        </p>
-      </header>
-      <MapContainer ref={mapRef} center={center} zoom={zoom} style={{ height: "100%" }}>
-        <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          attribution="&copy; CartoDB | &copy; OpenStreetMap contributors"
-        />
-        {points.map((p) => (
-          <CircleMarker
-            key={p.id}
-            center={[p.lat, p.lng]}
-            radius={radiusForCluster(p.concentration, p.event_count)}
-            pathOptions={{
-              color: colorForRisk(p.risk_score),
-              fillOpacity: opacityForCluster(p.concentration),
-              weight: 3,
-              dashArray: "5, 5",
-              lineCap: "round",
-              lineJoin: "round",
-            }}
-            title={`Risk: ${(p.risk_score * 100).toFixed(0)}% | Events: ${p.event_count}`}
-          />
-        ))}
-      </MapContainer>
+    <div
+      style={{
+        height: "100vh",
+        width: "100%",
+        background: "linear-gradient(135deg, #ffffff 0%, #f9fafb 100%)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "'Inter', 'Segoe UI', -apple-system, sans-serif",
+        overflow: "hidden",
+      }}
+    >
+      {/* Background accent */}
       <div
         style={{
           position: "absolute",
-          bottom: 20,
-          left: 20,
-          padding: "16px",
-          background: "#ffffff",
-          borderRadius: "8px",
-          fontSize: "0.9rem",
-          zIndex: 1000,
-          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-          fontFamily: "'Inter', 'Segoe UI', sans-serif",
-          border: "1px solid #e5e7eb",
+          top: "-100px",
+          right: "-100px",
+          width: "400px",
+          height: "400px",
+          background: "radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%)",
+          borderRadius: "50%",
+          pointerEvents: "none",
         }}
-      >
-        <strong style={{ display: "block", marginBottom: 8, fontSize: "1rem", color: "#1f2937" }}>
-          Risk Levels
-        </strong>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              style={{
-                width: 16,
-                height: 16,
-                borderRadius: "50%",
-                background: "#3b82f6",
-                border: "2px solid #1f2937",
-              }}
-            />
-            <span style={{ color: "#1f2937" }}>Low (0-20%)</span>
+      />
+      <div
+        style={{
+          position: "absolute",
+          bottom: "-50px",
+          left: "-50px",
+          width: "300px",
+          height: "300px",
+          background: "radial-gradient(circle, rgba(6, 182, 212, 0.1) 0%, transparent 70%)",
+          borderRadius: "50%",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Main content */}
+      <div style={{ position: "relative", zIndex: 10, textAlign: "center", maxWidth: "600px", padding: "40px 20px" }}>
+        <h1
+          style={{
+            fontSize: "3.5rem",
+            fontWeight: 700,
+            color: "#1f2937",
+            margin: "0 0 16px 0",
+            letterSpacing: "-0.02em",
+          }}
+        >
+          RouteIQ
+        </h1>
+
+        <p
+          style={{
+            fontSize: "1.25rem",
+            color: "#6b7280",
+            margin: "0 0 32px 0",
+            fontWeight: 400,
+            lineHeight: "1.6",
+          }}
+        >
+          Real-time fleet management with AI-powered risk analysis. Identify high-risk zones and driver behavior patterns at a glance.
+        </p>
+
+        {/* Features list */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "16px",
+            margin: "40px 0",
+            textAlign: "left",
+          }}
+        >
+          <div
+            style={{
+              padding: "16px",
+              background: "#ffffff",
+              borderRadius: "8px",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
+            }}
+          >
+            <div style={{ fontSize: "1.5rem", marginBottom: "8px" }}>🗺️</div>
+            <div style={{ fontWeight: 600, color: "#1f2937", marginBottom: "4px" }}>Risk Heatmap</div>
+            <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>Visual concentration of high-risk areas</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              style={{
-                width: 16,
-                height: 16,
-                borderRadius: "50%",
-                background: "#06b6d4",
-                border: "2px solid #1f2937",
-              }}
-            />
-            <span style={{ color: "#1f2937" }}>Low-Medium (20-40%)</span>
+
+          <div
+            style={{
+              padding: "16px",
+              background: "#ffffff",
+              borderRadius: "8px",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
+            }}
+          >
+            <div style={{ fontSize: "1.5rem", marginBottom: "8px" }}>📊</div>
+            <div style={{ fontWeight: 600, color: "#1f2937", marginBottom: "4px" }}>Real-time Data</div>
+            <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>Live fleet tracking & analysis</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              style={{
-                width: 16,
-                height: 16,
-                borderRadius: "50%",
-                background: "#eab308",
-                border: "2px solid #1f2937",
-              }}
-            />
-            <span style={{ color: "#1f2937" }}>Medium (40-60%)</span>
+
+          <div
+            style={{
+              padding: "16px",
+              background: "#ffffff",
+              borderRadius: "8px",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
+            }}
+          >
+            <div style={{ fontSize: "1.5rem", marginBottom: "8px" }}>⚡</div>
+            <div style={{ fontWeight: 600, color: "#1f2937", marginBottom: "4px" }}>Speed Violations</div>
+            <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>Track over & under-speed incidents</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              style={{
-                width: 16,
-                height: 16,
-                borderRadius: "50%",
-                background: "#f97316",
-                border: "2px solid #1f2937",
-              }}
-            />
-            <span style={{ color: "#1f2937" }}>High (60-80%)</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              style={{
-                width: 16,
-                height: 16,
-                borderRadius: "50%",
-                background: "#dc2626",
-                border: "2px solid #1f2937",
-              }}
-            />
-            <span style={{ color: "#1f2937" }}>Critical (80%+)</span>
+
+          <div
+            style={{
+              padding: "16px",
+              background: "#ffffff",
+              borderRadius: "8px",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
+            }}
+          >
+            <div style={{ fontSize: "1.5rem", marginBottom: "8px" }}>🎯</div>
+            <div style={{ fontWeight: 600, color: "#1f2937", marginBottom: "4px" }}>Driver Behavior</div>
+            <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>Aggressive braking & risky maneuvers</div>
           </div>
         </div>
+
+        {/* CTA Button */}
+        <Link href="/heatmap" style={{ textDecoration: "none" }}>
+          <button
+            style={{
+              padding: "16px 40px",
+              background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "8px",
+              fontSize: "1.1rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "all 0.3s ease",
+              boxShadow: "0 4px 15px rgba(59, 130, 246, 0.3)",
+              marginTop: "12px",
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = "0 6px 20px rgba(59, 130, 246, 0.4)";
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "0 4px 15px rgba(59, 130, 246, 0.3)";
+            }}
+          >
+            View Heatmap →
+          </button>
+        </Link>
+
+        <p style={{ fontSize: "0.85rem", color: "#9ca3af", marginTop: "24px" }}>
+          Powered by Geotab Real-time Intelligence
+        </p>
       </div>
     </div>
   );
