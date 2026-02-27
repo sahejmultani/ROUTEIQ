@@ -22,6 +22,8 @@ interface HeatPoint {
   lat: number;
   lng: number;
   risk_score: number;
+  event_count: number;
+  concentration: number;
 }
 
 export default function Home() {
@@ -31,9 +33,11 @@ export default function Home() {
   const mapRef = useRef<any>(null);
 
   useEffect(() => {
+    console.log("Fetching heatmap data...");
     axios
-      .get<HeatPoint[]>("/api/heatmap")
+      .get<HeatPoint[]>("/api/heatmap", { timeout: 35000 })
       .then((r) => {
+        console.log("Received data:", r.data);
         setPoints(r.data);
         
         // Calculate bounding box
@@ -63,9 +67,12 @@ export default function Home() {
           if (maxSpan < 0.1) calculatedZoom = 14;
           
           setZoom(calculatedZoom);
+          console.log("Map centered at", centerLat, centerLng, "zoom", calculatedZoom);
         }
       })
-      .catch(console.error);
+      .catch((error) => {
+        console.error("Error fetching heatmap:", error);
+      });
   }, []);
 
   const colorForRisk = (r: number) => {
@@ -74,7 +81,16 @@ export default function Home() {
     return "red";
   };
 
-  const radiusForRisk = (r: number) => 5 + r * 15;
+  // Larger radius based on concentration and event count
+  const radiusForCluster = (concentration: number, eventCount: number) => {
+    // Base radius 20-120px based on concentration
+    return 20 + concentration * 100;
+  };
+
+  // Opacity based on concentration intensity
+  const opacityForCluster = (concentration: number) => {
+    return 0.3 + concentration * 0.5; // 0.3 - 0.8
+  };
 
   return (
     <div style={{ height: "100vh", width: "100%", position: "relative" }}>
@@ -101,8 +117,14 @@ export default function Home() {
           <CircleMarker
             key={p.id}
             center={[p.lat, p.lng]}
-            radius={radiusForRisk(p.risk_score)}
-            pathOptions={{ color: colorForRisk(p.risk_score), fillOpacity: 0.5 }}
+            radius={radiusForCluster(p.concentration, p.event_count)}
+            pathOptions={{
+              color: colorForRisk(p.risk_score),
+              fillOpacity: opacityForCluster(p.concentration),
+              weight: 2,
+              dashArray: "5, 5",
+            }}
+            title={`Risk: ${(p.risk_score * 100).toFixed(0)}% | Events: ${p.event_count}`}
           />
         ))}
       </MapContainer>

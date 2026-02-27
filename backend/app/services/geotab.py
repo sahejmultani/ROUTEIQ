@@ -5,8 +5,9 @@ from typing import List, Dict, Optional
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 from dotenv import load_dotenv
+import math
 
-from app.schemas import HeatPoint
+from app.schemas import HeatPoint, HeatCluster
 
 load_dotenv()
 
@@ -108,15 +109,15 @@ def _calculate_risk_score(
     return min(total_risk, 1.0)
 
 
-def fetch_heat_points() -> List[HeatPoint]:
-    """Fetch real telematics data from Geotab and convert to heatmap points.
+def fetch_heat_points() -> List[HeatCluster]:
+    """Fetch real telematics data from Geotab and return risk clusters.
 
-    Aggregates:
-    - LogRecord (GPS + speed data) for concentration
-    - ExceptionEvent (violations like speeding, harsh braking) for risk
+    Creates geographic clusters of high-risk areas based on:
+    - Event concentration (log records)
+    - Violation frequency (exception events)
+    - Speed violations
     
-    Groups by location and computes risk score based on event frequency
-    and violation severity.
+    Returns larger clusters highlighting areas with risky driving patterns.
     """
     auth = GeotabAuth()
     if not auth.authenticate():
@@ -161,7 +162,7 @@ def fetch_heat_points() -> List[HeatPoint]:
 
     print(f"Fetched {len(log_records)} log records and {len(exception_events)} exceptions")
 
-    # Aggregate by location (rounded to 2 decimal places)
+    # Aggregate by location (1 decimal = ~10km granularity for clustering)
     location_stats: Dict[tuple, Dict] = defaultdict(
         lambda: {
             "lat": None,
@@ -181,7 +182,7 @@ def fetch_heat_points() -> List[HeatPoint]:
         if lat is None or lng is None:
             continue
 
-        # Cluster nearby points (round to 2 decimals = ~1km granularity)
+        # Cluster with 0.05 decimal = ~500m-1km granularity for neighborhood-level clusters
         lat_rounded = round(lat, 2)
         lng_rounded = round(lng, 2)
         key = (lat_rounded, lng_rounded)
@@ -193,23 +194,26 @@ def fetch_heat_points() -> List[HeatPoint]:
 
     # Process exception events (violations)
     for event in exception_events:
-        # ExceptionEvents don't have lat/lng directly; use nearest log record
-        # For now, we'll add exception count to a general pool
-        # In production, you'd match exceptions to nearby log records by timestamp
         if event.get("distance"):
-            # ExceptionEvent doesn't have coordinates, so we skip location-specific mapping
             pass
 
-    # Convert to HeatPoint list
-    heat_points = []
+    # Convert to HeatCluster list
+    heat_clusters = []
+    
+    # Calculate max event count for normalization
+    max_event_count = max(
+        [stats["log_count"] for stats in location_stats.values()],
+        default=1
+    )
+
     for idx, (key, stats) in enumerate(location_stats.items()):
-        if stats["log_count"] < 5:
+        if stats["log_count"] < 20:
             # Skip locations with very few data points
             continue
 
         avg_speed = sum(stats["speeds"]) / len(stats["speeds"]) if stats["speeds"] else 0
         
-        # Assume speed limit is ~50 km/h for urban areas (adjust as needed)
+        # Assume speed limit is ~50 km/h for urban areas
         speed_limit = 50
         avg_speed_excess = max(0, avg_speed - speed_limit)
 
@@ -219,16 +223,21 @@ def fetch_heat_points() -> List[HeatPoint]:
             stats["log_count"],
         )
 
-        # Only include points with meaningful risk
-        if risk_score > 0.05 or stats["exception_count"] > 0:
-            heat_points.append(
-                HeatPoint(
-                    id=f"loc_{idx}",
+        # Concentration: relative to max event count in area
+        concentration = min(stats["log_count"] / max_event_count, 1.0)
+
+        # Include clusters with at least 20 data points
+        if stats["log_count"] > 20:
+            heat_clusters.append(
+                HeatCluster(
+                    id=f"cluster_{idx}",
                     lat=stats["lat"],
                     lng=stats["lng"],
                     risk_score=risk_score,
+                    event_count=stats["log_count"],
+                    concentration=concentration,
                 )
             )
 
-    print(f"Generated {len(heat_points)} heatmap points")
-    return heat_points
+    print(f"Generated {len(heat_clusters)} risk clusters")
+    return heat_clusters
