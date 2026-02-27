@@ -6,7 +6,8 @@ import os
 from dotenv import load_dotenv
 
 # Placeholder for actual risk cluster logic
-# from .geotab_helpers import fetch_heat_points
+# Import Geotab helpers
+from .geotab_helpers import geotab_login, fetch_trip_events
 
 description = """
 API for high-risk driving area heatmap in the Greater Toronto Area.
@@ -38,30 +39,37 @@ class HeatCluster(BaseModel):
 
 @app.get("/api/heatmap", response_model=List[HeatCluster])
 def get_heatmap():
-    # Example: Replace this with real Geotab data fetching
-    # For demonstration, use a sample list of points (lat, lng, risk_score, ...)
-    points = [
-        {"lat": 43.6532, "lng": -79.3832, "risk_score": 0.8, "event_count": 20, "speed_limit": 50, "avg_speed": 62.0, "exception_count": 3, "speed_excess_count": 5, "speed_deficit_count": 1},
-        {"lat": 43.6533, "lng": -79.3833, "risk_score": 0.7, "event_count": 10, "speed_limit": 50, "avg_speed": 60.0, "exception_count": 2, "speed_excess_count": 2, "speed_deficit_count": 0},
-        {"lat": 43.7001, "lng": -79.4163, "risk_score": 0.6, "event_count": 12, "speed_limit": 60, "avg_speed": 45.0, "exception_count": 1, "speed_excess_count": 0, "speed_deficit_count": 3},
-        {"lat": 43.8000, "lng": -79.4200, "risk_score": 0.3, "event_count": 5, "speed_limit": 40, "avg_speed": 38.0, "exception_count": 0, "speed_excess_count": 0, "speed_deficit_count": 1},
-    ]
+    # Login to Geotab
+    try:
+        login_result = geotab_login()
+        session_id = login_result["sessionId"]
+        credentials = login_result["credentials"]
+    except Exception as e:
+        print(f"Geotab login failed: {e}")
+        return []
 
-    # Plot all points with aggressive driving (risk_score > 0.5)
+    # Fetch trip events (aggressive driving, etc.)
+    try:
+        events = fetch_trip_events(session_id, credentials)
+    except Exception as e:
+        print(f"Geotab fetch failed: {e}")
+        return []
+
+    # Convert events to HeatCluster objects (example: you must adapt this mapping)
     clusters = []
-    for idx, p in enumerate(points):
-        if p["risk_score"] > 0.5:
-            clusters.append(HeatCluster(
-                id=f"point_{idx}",
-                lat=p["lat"],
-                lng=p["lng"],
-                risk_score=p["risk_score"],
-                event_count=p["event_count"],
-                concentration=1.0,
-                speed_limit=p["speed_limit"],
-                avg_speed=p["avg_speed"],
-                exception_count=p["exception_count"],
-                speed_excess_count=p["speed_excess_count"],
-                speed_deficit_count=p["speed_deficit_count"]
-            ))
+    for idx, event in enumerate(events):
+        # You must adapt these fields to match your Geotab data structure
+        clusters.append(HeatCluster(
+            id=f"point_{idx}",
+            lat=event.get("latitude", 0),
+            lng=event.get("longitude", 0),
+            risk_score=event.get("risk_score", 0.5),
+            event_count=1,
+            concentration=1.0,
+            speed_limit=event.get("speed_limit", 0),
+            avg_speed=event.get("speed", 0),
+            exception_count=event.get("exception_count", 0),
+            speed_excess_count=event.get("speed_excess_count", 0),
+            speed_deficit_count=event.get("speed_deficit_count", 0)
+        ))
     return clusters
