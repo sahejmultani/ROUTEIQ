@@ -1,9 +1,14 @@
+
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
+import { useState } from 'react';
+import VehicleList from '../components/VehicleList';
+import VehicleDetails from '../components/VehicleDetails';
 
 const Map = dynamic(() => import('../components/HeatMap'), { ssr: false });
 
 export default function Home() {
+  const [selectedVehicle, setSelectedVehicle] = useState(null);
   return (
     <div style={{ background: '#fff', minHeight: '100vh', color: '#222' }}>
       <Head>
@@ -17,6 +22,8 @@ export default function Home() {
         <p style={{ marginBottom: '2rem', color: '#555' }}>
           Visualizing high-risk areas based on telematics, hard braking, and speed violations.
         </p>
+        <VehicleList onSelect={setSelectedVehicle} />
+        <VehicleDetails vehicle={selectedVehicle} />
         <Map />
       </main>
     </div>
