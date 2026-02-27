@@ -1,5 +1,8 @@
+# Backend requirements for FastAPI and geospatial processing
 fastapi
 uvicorn[standard]
-pydantic
-requests
 python-dotenv
+requests
+pydantic>=1.10,<2.0
+geopy
+httpx
