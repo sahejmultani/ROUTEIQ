@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import math
 
 from app.schemas import HeatPoint, HeatCluster
+from app.services.osm import get_speed_limit_for_location
 
 load_dotenv()
 
@@ -86,27 +87,47 @@ class GeotabAuth:
 
 def _calculate_risk_score(
     exception_event_count: int,
-    avg_speed_excess: float,
+    avg_speed: float,
+    speed_limit: int,
     log_record_count: int,
-) -> float:
-    """Calculate a composite risk score (0.0 - 1.0) from driving events.
+    speeds: list,
+) -> tuple:
+    """Calculate composite risk score and related metrics.
     
-    Factors:
+    Risk Factors:
     - Exception events (speeding, harsh braking, etc.)
-    - Average speed excess from speed limits
-    - Concentration of data points at location
+    - Speed deviation: ±12 km/h from limit triggers risk
+      * >12 km/h over: aggressive speeding
+      * >12 km/h under: potential congestion/traffic issues
+    - Data concentration at location (indicates high-traffic area)
+    
+    Returns:
+        Tuple of (risk_score, speed_excess_count, speed_deficit_count)
+        where risk_score is 0.0-1.0
     """
-    # Each exception event adds risk
+    # Each exception event adds risk (5% per event, max 40%)
     exception_risk = min(exception_event_count * 0.05, 0.4)
     
-    # Speed excess (km/h over limit) adds risk
-    speed_risk = min(avg_speed_excess * 0.01, 0.4)
+    # Count speed deviations with ±12 km/h tolerance
+    speed_excess_count = 0
+    speed_deficit_count = 0
     
-    # Higher concentration of records at one location suggests risky area
+    for speed in speeds:
+        if speed > speed_limit + 12:
+            speed_excess_count += 1
+        elif speed < speed_limit - 12:
+            speed_deficit_count += 1
+    
+    # Speed deviation risk: percentage of events violating tolerance
+    total_speed_events = speed_excess_count + speed_deficit_count
+    speed_event_pct = total_speed_events / max(len(speeds), 1)
+    speed_risk = min(speed_event_pct * 0.4, 0.4)
+    
+    # Concentration risk: high traffic density at location
     concentration_risk = min(log_record_count / 100.0, 0.2)
-
+    
     total_risk = exception_risk + speed_risk + concentration_risk
-    return min(total_risk, 1.0)
+    return min(total_risk, 1.0), speed_excess_count, speed_deficit_count
 
 
 def fetch_heat_points() -> List[HeatCluster]:
@@ -162,7 +183,7 @@ def fetch_heat_points() -> List[HeatCluster]:
 
     print(f"Fetched {len(log_records)} log records and {len(exception_events)} exceptions")
 
-    # Aggregate by location (1 decimal = ~10km granularity for clustering)
+    # Aggregate by location (2 decimal = ~500m-1km granularity for clustering)
     location_stats: Dict[tuple, Dict] = defaultdict(
         lambda: {
             "lat": None,
@@ -194,8 +215,21 @@ def fetch_heat_points() -> List[HeatCluster]:
 
     # Process exception events (violations)
     for event in exception_events:
-        if event.get("distance"):
-            pass
+        # Exception events may not have exact lat/lng, but they have driver/device info
+        # For now, we'll estimate based on the distance field or skip if not locatable
+        # In a real scenario, you'd track driver location at time of event
+        if "longitude" in event and "latitude" in event:
+            lat = event.get("latitude")
+            lng = event.get("longitude")
+            
+            if lat is not None and lng is not None:
+                lat_rounded = round(lat, 2)
+                lng_rounded = round(lng, 2)
+                key = (lat_rounded, lng_rounded)
+                
+                # Only count exception if we have a cluster for that location
+                if key in location_stats:
+                    location_stats[key]["exception_count"] += 1
 
     # Convert to HeatCluster list
     heat_clusters = []
@@ -213,14 +247,16 @@ def fetch_heat_points() -> List[HeatCluster]:
 
         avg_speed = sum(stats["speeds"]) / len(stats["speeds"]) if stats["speeds"] else 0
         
-        # Assume speed limit is ~50 km/h for urban areas
-        speed_limit = 50
-        avg_speed_excess = max(0, avg_speed - speed_limit)
-
-        risk_score = _calculate_risk_score(
+        # Get actual speed limit from OpenStreetMap
+        speed_limit = get_speed_limit_for_location(stats["lat"], stats["lng"])
+        
+        # Calculate risk with actual speed limit and speeds array
+        risk_score, speed_excess_cnt, speed_deficit_cnt = _calculate_risk_score(
             stats["exception_count"],
-            avg_speed_excess,
+            avg_speed,
+            speed_limit,
             stats["log_count"],
+            stats["speeds"],
         )
 
         # Concentration: relative to max event count in area
@@ -236,6 +272,11 @@ def fetch_heat_points() -> List[HeatCluster]:
                     risk_score=risk_score,
                     event_count=stats["log_count"],
                     concentration=concentration,
+                    speed_limit=speed_limit,
+                    avg_speed=round(avg_speed, 1),
+                    exception_count=stats["exception_count"],
+                    speed_excess_count=speed_excess_cnt,
+                    speed_deficit_count=speed_deficit_cnt,
                 )
             )
 
