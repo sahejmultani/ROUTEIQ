@@ -25,9 +25,9 @@ This project consists of a backend (Python) and a frontend (Next.js/React) for R
    ```
 4. **Run the backend server:**
    ```sh
-   python main.py
+   uvicorn main:app --reload
    ```
-   The backend will start, typically on `http://127.0.0.1:5000` or as specified in your code.
+   The backend will start, typically on `http://127.0.0.1:8000` or as specified in your code.
 
 ---
 
