@@ -76,9 +76,12 @@ export default function Home() {
   }, []);
 
   const colorForRisk = (r: number) => {
-    if (r < 0.33) return "green";
-    if (r < 0.66) return "yellow";
-    return "red";
+    // Modern gradient: low risk (blue) → medium (cyan/green) → high risk (red/dark)
+    if (r < 0.2) return "#3b82f6"; // Blue - minimal risk
+    if (r < 0.4) return "#06b6d4"; // Cyan - low risk
+    if (r < 0.6) return "#eab308"; // Yellow - medium risk
+    if (r < 0.8) return "#f97316"; // Orange - high risk
+    return "#dc2626"; // Red - critical risk
   };
 
   // Larger radius based on concentration and event count
@@ -100,18 +103,25 @@ export default function Home() {
           top: 0,
           left: 0,
           right: 0,
-          padding: "8px 16px",
-          background: "rgba(0,0,0,0.6)",
-          color: "white",
+          padding: "12px 20px",
+          background: "#ffffff",
+          color: "#1f2937",
           zIndex: 1000,
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+          borderBottom: "1px solid #e5e7eb",
         }}
       >
-        <h1 style={{ margin: 0, fontSize: "1.2rem" }}>RouteIQ Heatmap</h1>
+        <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 600, color: "#1f2937" }}>
+          RouteIQ Heatmap
+        </h1>
+        <p style={{ margin: "4px 0 0 0", fontSize: "0.85rem", color: "#6b7280" }}>
+          Fleet risk analysis & concentration zones
+        </p>
       </header>
       <MapContainer ref={mapRef} center={center} zoom={zoom} style={{ height: "100%" }}>
         <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution="&copy; OpenStreetMap contributors"
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          attribution="&copy; CartoDB | &copy; OpenStreetMap contributors"
         />
         {points.map((p) => (
           <CircleMarker
@@ -121,8 +131,10 @@ export default function Home() {
             pathOptions={{
               color: colorForRisk(p.risk_score),
               fillOpacity: opacityForCluster(p.concentration),
-              weight: 2,
+              weight: 3,
               dashArray: "5, 5",
+              lineCap: "round",
+              lineJoin: "round",
             }}
             title={`Risk: ${(p.risk_score * 100).toFixed(0)}% | Events: ${p.event_count}`}
           />
@@ -133,18 +145,80 @@ export default function Home() {
           position: "absolute",
           bottom: 20,
           left: 20,
-          padding: "8px 12px",
-          background: "rgba(255,255,255,0.8)",
-          borderRadius: 4,
+          padding: "16px",
+          background: "#ffffff",
+          borderRadius: "8px",
           fontSize: "0.9rem",
           zIndex: 1000,
+          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+          fontFamily: "'Inter', 'Segoe UI', sans-serif",
+          border: "1px solid #e5e7eb",
         }}
       >
-        <strong>Legend:</strong>
-        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-          <span style={{ color: "green" }}>Low risk</span>
-          <span style={{ color: "yellow" }}>Medium risk</span>
-          <span style={{ color: "red" }}>High risk</span>
+        <strong style={{ display: "block", marginBottom: 8, fontSize: "1rem", color: "#1f2937" }}>
+          Risk Levels
+        </strong>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                background: "#3b82f6",
+                border: "2px solid #1f2937",
+              }}
+            />
+            <span style={{ color: "#1f2937" }}>Low (0-20%)</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                background: "#06b6d4",
+                border: "2px solid #1f2937",
+              }}
+            />
+            <span style={{ color: "#1f2937" }}>Low-Medium (20-40%)</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                background: "#eab308",
+                border: "2px solid #1f2937",
+              }}
+            />
+            <span style={{ color: "#1f2937" }}>Medium (40-60%)</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                background: "#f97316",
+                border: "2px solid #1f2937",
+              }}
+            />
+            <span style={{ color: "#1f2937" }}>High (60-80%)</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                background: "#dc2626",
+                border: "2px solid #1f2937",
+              }}
+            />
+            <span style={{ color: "#1f2937" }}>Critical (80%+)</span>
+          </div>
         </div>
       </div>
     </div>
