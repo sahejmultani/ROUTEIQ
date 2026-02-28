@@ -46,32 +46,35 @@ export default function VehicleDetails({ vehicle }) {
       position: 'fixed',
       top: 80,
       right: 0,
-      width: 420,
-      maxWidth: '95vw',
+      width: 400,
+      maxWidth: '97vw',
       height: 'calc(100vh - 100px)',
-      background: '#fff',
-      borderTopLeftRadius: 24,
-      borderBottomLeftRadius: 24,
-      boxShadow: '-4px 0 32px #e3e8f0',
-      padding: 32,
+      background: 'rgba(255,255,255,0.97)',
+      borderTopLeftRadius: 20,
+      borderBottomLeftRadius: 20,
+      boxShadow: '-2px 0 12px #e3e8f0',
+      padding: 28,
       zIndex: 200,
       overflowY: 'auto',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'flex-start',
       animation: 'slideInDrawer 0.3s',
+      border: '1px solid #e3e8f0',
+      fontFamily: 'Poppins, Inter, Arial, sans-serif',
     }}>
-      <h3 style={{ fontSize: 22, fontWeight: 700, marginBottom: 18, color: '#1a237e', letterSpacing: 0.2 }}>Vehicle Details</h3>
-      <div style={{ fontWeight: 600, color: '#1976d2', marginBottom: 8, fontSize: 16 }}>Summary</div>
+      <h3 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16, color: '#222', letterSpacing: 0.1, fontFamily: 'Poppins, Inter, Arial, sans-serif' }}>Vehicle Details</h3>
+      <div style={{ fontWeight: 600, color: '#888', marginBottom: 8, fontSize: 15, letterSpacing: 0.1 }}>Summary</div>
       <ul style={{
-        background: '#f7fafd',
-        borderRadius: 10,
-        padding: 18,
+        background: '#f7f8fa',
+        borderRadius: 12,
+        padding: 16,
         fontSize: 15.5,
         margin: 0,
-        marginBottom: 18,
-        boxShadow: '0 2px 8px #f0f4fa',
+        marginBottom: 16,
+        boxShadow: '0 1px 4px #e3e8f0',
         width: '100%',
+        fontFamily: 'Poppins, Inter, Arial, sans-serif',
       }}>
         <li style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
           <StatusDot active={dashboard.activeStatus} />

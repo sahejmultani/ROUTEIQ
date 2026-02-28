@@ -52,10 +52,10 @@ export default function VehicleList({ onSelect }) {
       minWidth: 320,
       maxWidth: 380,
       height: 'calc(100vh - 120px)',
-      background: '#fff',
-      borderRadius: 18,
-      boxShadow: '0 4px 24px #e3e8f0',
-      padding: 18,
+      background: 'rgba(255,255,255,0.97)',
+      borderRadius: 20,
+      boxShadow: '0 2px 12px #e3e8f0',
+      padding: 20,
       marginRight: 32,
       display: 'flex',
       flexDirection: 'column',
@@ -63,6 +63,7 @@ export default function VehicleList({ onSelect }) {
       position: 'sticky',
       top: 80,
       overflow: 'hidden',
+      border: '1px solid #e3e8f0',
     }}>
       <input
         type="text"
@@ -72,19 +73,21 @@ export default function VehicleList({ onSelect }) {
         style={{
           padding: '12px 16px',
           borderRadius: 8,
-          border: '1.5px solid #b3c6e0',
+          border: '1px solid #e3e8f0',
           fontSize: 16,
-          marginBottom: 14,
+          marginBottom: 12,
           outline: 'none',
-          boxShadow: '0 1px 4px #f0f4fa',
+          boxShadow: '0 1px 4px #e3e8f0',
+          background: '#f7f8fa',
+          fontFamily: 'Poppins, Inter, Arial, sans-serif',
         }}
       />
       <div style={{
         flex: 1,
         overflowY: 'auto',
-        borderRadius: 10,
-        background: '#f7fafd',
-        boxShadow: '0 1px 4px #f0f4fa',
+        borderRadius: 12,
+        background: '#f7f8fa',
+        boxShadow: '0 1px 4px #e3e8f0',
         padding: 6,
       }}>
         {filtered.length === 0 && (
@@ -95,23 +98,24 @@ export default function VehicleList({ onSelect }) {
             key={v.id}
             onClick={() => setSelectedId(v.id)}
             style={{
-              padding: '13px 14px',
+              padding: '12px 14px',
               marginBottom: 7,
               borderRadius: 8,
               background: v.id === selectedId ? '#e3e8f0' : '#fff',
-              color: v.id === selectedId ? '#1a237e' : '#222',
+              color: v.id === selectedId ? '#222' : '#222',
               fontWeight: v.id === selectedId ? 700 : 500,
               fontSize: 16,
               cursor: 'pointer',
-              border: v.id === selectedId ? '2px solid #1976d2' : '1.5px solid #b3c6e0',
-              boxShadow: v.id === selectedId ? '0 2px 8px #dbeafe' : 'none',
+              border: v.id === selectedId ? '2px solid #222' : '1px solid #e3e8f0',
+              boxShadow: v.id === selectedId ? '0 2px 8px #e3e8f0' : 'none',
               display: 'flex',
               alignItems: 'center',
               transition: 'all 0.15s',
+              fontFamily: 'Poppins, Inter, Arial, sans-serif',
             }}
           >
             <span style={{ marginRight: 10 }}>{v.name || v.id}</span>
-            {v.licensePlate && <span style={{ color: '#1976d2', fontWeight: 600, fontSize: 14, marginLeft: 'auto' }}>{v.licensePlate}</span>}
+            {v.licensePlate && <span style={{ color: '#888', fontWeight: 600, fontSize: 14, marginLeft: 'auto' }}>{v.licensePlate}</span>}
           </div>
         ))}
       </div>

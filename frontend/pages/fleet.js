@@ -23,22 +23,24 @@ export default function FleetPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%)',
-      fontFamily: 'Inter, Arial, sans-serif',
+      background: '#f7f8fa',
+      fontFamily: 'Poppins, Inter, Arial, sans-serif',
+      display: 'flex',
+      flexDirection: 'column',
     }}>
       <Navbar />
       <Head>
         <title>Fleet & Vehicle Info</title>
         <meta name="description" content="View and manage your fleet vehicles" />
       </Head>
-      <main style={{ maxWidth: 1400, margin: '0 auto', padding: '2rem' }}>
-        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 32, minHeight: 600 }}>
+      <main style={{ maxWidth: 1400, margin: '0 auto', padding: '2rem 0' }}>
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 28, minHeight: 600 }}>
           <VehicleList onSelect={(v) => { setSelectedVehicle(v); setSelectedVehicleId(v?.id); }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h1 style={{ fontWeight: 700, fontSize: '2.5rem', marginBottom: '1rem', color: '#1a237e' }}>
+            <h1 style={{ fontWeight: 700, fontSize: '2rem', marginBottom: '1rem', color: '#222' }}>
               Fleet & Vehicle Information
             </h1>
-            <p style={{ marginBottom: '2rem', color: '#555', fontSize: 18 }}>
+            <p style={{ marginBottom: '2rem', color: '#555', fontSize: 16 }}>
               Browse your fleet and view real-time vehicle data.
             </p>
             {/* Pass key to force remount on vehicle change */}

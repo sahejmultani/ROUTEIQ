@@ -6,23 +6,27 @@ import Navbar from '../components/Navbar';
 const Map = dynamic(() => import('../components/HeatMap'), { ssr: false });
 
 const cardStyle = {
-  background: '#fff',
-  borderRadius: 18,
-  boxShadow: '0 4px 24px #e3e8f0',
+  background: 'rgba(255,255,255,0.97)',
+  borderRadius: 20,
+  boxShadow: '0 2px 12px #e3e8f0',
   padding: 40,
   maxWidth: 900,
   margin: '40px auto',
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
+  border: '1px solid #e3e8f0',
+  animation: 'fadeInCard 0.7s',
 };
 
 export default function HeatmapPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%)',
-      fontFamily: 'Inter, Arial, sans-serif',
+      background: '#f7f8fa',
+      fontFamily: 'Poppins, Inter, Arial, sans-serif',
+      display: 'flex',
+      flexDirection: 'column',
     }}>
       <Navbar />
       <Head>
@@ -31,10 +35,10 @@ export default function HeatmapPage() {
       </Head>
       <main style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem' }}>
         <div style={cardStyle}>
-          <h1 style={{ fontWeight: 700, fontSize: '2.5rem', marginBottom: '1rem', color: '#1a237e' }}>
+          <h1 style={{ fontWeight: 800, fontSize: '2.2rem', marginBottom: '1.2rem', color: '#222', letterSpacing: 0.5, fontFamily: 'Poppins, Inter, Arial, sans-serif' }}>
             Toronto High-Risk Driving Heatmap
           </h1>
-          <p style={{ marginBottom: '2rem', color: '#555', fontSize: 18 }}>
+          <p style={{ marginBottom: '2rem', color: '#555', fontSize: 17, fontWeight: 400, fontFamily: 'Poppins, Inter, Arial, sans-serif' }}>
             Visualizing high-risk areas based on telematics, hard braking, and speed violations.
           </p>
           <div style={{ width: '100%' }}>
