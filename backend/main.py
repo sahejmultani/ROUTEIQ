@@ -181,6 +181,11 @@ def get_vehicle_data(vehicle_id: str):
         }
         speed = latest_gps_speed["speed"]
         speed_time = latest_gps_speed["dateTime"]
+        # Add these fields for direct access
+        latitude = latest_gps_speed["latitude"]
+        longitude = latest_gps_speed["longitude"]
+        speed_val = latest_gps_speed["speed"]
+        dateTime = latest_gps_speed["dateTime"]
     else:
         # Fallback to previous logic
         gps_status = get_latest_status("DiagnosticGpsPositionId")
@@ -190,11 +195,18 @@ def get_vehicle_data(vehicle_id: str):
                 "longitude": gps_status.get("data", {}).get("longitude"),
                 "dateTime": gps_status.get("dateTime")
             }
+            latitude = gps_status.get("data", {}).get("latitude")
+            longitude = gps_status.get("data", {}).get("longitude")
+            dateTime = gps_status.get("dateTime")
         else:
             last_position = None
+            latitude = None
+            longitude = None
+            dateTime = None
         speed_status = get_latest_status(DIAGNOSTICS["speed"][0])
         speed = speed_status.get("data") if speed_status else None
         speed_time = speed_status.get("dateTime") if speed_status else None
+        speed_val = speed
 
     # Fuel
     fuel_status = get_latest_status(DIAGNOSTICS["fuel"][0])
@@ -242,6 +254,10 @@ def get_vehicle_data(vehicle_id: str):
         "activeStatus": active_status,
         "lastReportedPosition": last_position if last_position else "No position data",
         "speed": {"value": friendly(speed, "speed"), "dateTime": speed_time or "No timestamp"},
+        "latitude": latitude,
+        "longitude": longitude,
+        "speedValue": speed_val,
+        "dateTime": dateTime,
         "fuelStatus": friendly(fuel, "fuel status"),
         "seatbeltStatus": friendly(seatbelt, "seatbelt status"),
         "speedingAlert": speeding_alert,
