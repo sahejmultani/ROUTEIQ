@@ -19,6 +19,7 @@ const cardStyle = {
 
 export default function FleetPage() {
   const [selectedVehicle, setSelectedVehicle] = useState(null);
+  const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   return (
     <div style={{
       minHeight: '100vh',
@@ -30,16 +31,19 @@ export default function FleetPage() {
         <title>Fleet & Vehicle Info</title>
         <meta name="description" content="View and manage your fleet vehicles" />
       </Head>
-      <main style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem' }}>
-        <div style={cardStyle}>
-          <h1 style={{ fontWeight: 700, fontSize: '2.5rem', marginBottom: '1rem', color: '#1a237e' }}>
-            Fleet & Vehicle Information
-          </h1>
-          <p style={{ marginBottom: '2rem', color: '#555', fontSize: 18 }}>
-            Browse your fleet and view real-time vehicle data.
-          </p>
-          <VehicleList onSelect={setSelectedVehicle} />
-          <VehicleDetails vehicle={selectedVehicle} />
+      <main style={{ maxWidth: 1400, margin: '0 auto', padding: '2rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 32, minHeight: 600 }}>
+          <VehicleList onSelect={(v) => { setSelectedVehicle(v); setSelectedVehicleId(v?.id); }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 style={{ fontWeight: 700, fontSize: '2.5rem', marginBottom: '1rem', color: '#1a237e' }}>
+              Fleet & Vehicle Information
+            </h1>
+            <p style={{ marginBottom: '2rem', color: '#555', fontSize: 18 }}>
+              Browse your fleet and view real-time vehicle data.
+            </p>
+            {/* Pass key to force remount on vehicle change */}
+            <VehicleDetails key={selectedVehicleId} vehicle={selectedVehicle} />
+          </div>
         </div>
       </main>
     </div>

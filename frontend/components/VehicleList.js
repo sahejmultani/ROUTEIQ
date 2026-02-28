@@ -1,11 +1,15 @@
 
+
 import { useEffect, useState } from 'react';
+
 
 export default function VehicleList({ onSelect }) {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedId, setSelectedId] = useState('');
+  const [search, setSearch] = useState('');
+
 
   useEffect(() => {
     fetch('http://localhost:8000/api/vehicles')
@@ -22,6 +26,7 @@ export default function VehicleList({ onSelect }) {
     // eslint-disable-next-line
   }, []);
 
+
   useEffect(() => {
     if (!selectedId) return;
     const v = vehicles.find((v) => v.id === selectedId);
@@ -32,54 +37,84 @@ export default function VehicleList({ onSelect }) {
   if (loading) return <div>Loading vehicles...</div>;
   if (error) return <div>Error loading vehicles.</div>;
 
+  // Filter vehicles by search
+  const filtered = vehicles.filter(v => {
+    const q = search.toLowerCase();
+    return (
+      (v.name && v.name.toLowerCase().includes(q)) ||
+      (v.licensePlate && v.licensePlate.toLowerCase().includes(q)) ||
+      (v.id && v.id.toLowerCase().includes(q))
+    );
+  });
+
   return (
     <div style={{
-      marginBottom: 32,
+      minWidth: 320,
+      maxWidth: 380,
+      height: 'calc(100vh - 120px)',
       background: '#fff',
-      borderRadius: 16,
+      borderRadius: 18,
       boxShadow: '0 4px 24px #e3e8f0',
-      padding: 28,
-      maxWidth: 420,
-      marginLeft: 'auto',
-      marginRight: 'auto',
+      padding: 18,
+      marginRight: 32,
       display: 'flex',
       flexDirection: 'column',
-      alignItems: 'center',
+      alignItems: 'stretch',
+      position: 'sticky',
+      top: 80,
+      overflow: 'hidden',
     }}>
-      <label htmlFor="vehicle-select" style={{
-        fontSize: 18,
-        fontWeight: 700,
-        marginBottom: 16,
-        color: '#1a237e',
-        letterSpacing: 0.2,
-      }}>
-        Select a Vehicle
-      </label>
-      <select
-        id="vehicle-select"
-        value={selectedId}
-        onChange={e => setSelectedId(e.target.value)}
+      <input
+        type="text"
+        placeholder="Search vehicles..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
         style={{
-          padding: '14px 20px',
-          borderRadius: 10,
+          padding: '12px 16px',
+          borderRadius: 8,
           border: '1.5px solid #b3c6e0',
-          fontSize: 17,
-          minWidth: 260,
-          background: '#f7fafd',
-          color: '#222',
-          fontWeight: 500,
+          fontSize: 16,
+          marginBottom: 14,
           outline: 'none',
-          boxShadow: '0 2px 8px #f0f4fa',
-          marginBottom: 4,
-          transition: 'border 0.2s',
+          boxShadow: '0 1px 4px #f0f4fa',
         }}
-      >
-        {vehicles.map((v) => (
-          <option key={v.id} value={v.id}>
-            {v.name || v.id} {v.licensePlate ? `(${v.licensePlate})` : ''}
-          </option>
+      />
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        borderRadius: 10,
+        background: '#f7fafd',
+        boxShadow: '0 1px 4px #f0f4fa',
+        padding: 6,
+      }}>
+        {filtered.length === 0 && (
+          <div style={{ color: '#888', fontStyle: 'italic', padding: 16 }}>No vehicles found.</div>
+        )}
+        {filtered.map((v) => (
+          <div
+            key={v.id}
+            onClick={() => setSelectedId(v.id)}
+            style={{
+              padding: '13px 14px',
+              marginBottom: 7,
+              borderRadius: 8,
+              background: v.id === selectedId ? '#e3e8f0' : '#fff',
+              color: v.id === selectedId ? '#1a237e' : '#222',
+              fontWeight: v.id === selectedId ? 700 : 500,
+              fontSize: 16,
+              cursor: 'pointer',
+              border: v.id === selectedId ? '2px solid #1976d2' : '1.5px solid #b3c6e0',
+              boxShadow: v.id === selectedId ? '0 2px 8px #dbeafe' : 'none',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.15s',
+            }}
+          >
+            <span style={{ marginRight: 10 }}>{v.name || v.id}</span>
+            {v.licensePlate && <span style={{ color: '#1976d2', fontWeight: 600, fontSize: 14, marginLeft: 'auto' }}>{v.licensePlate}</span>}
+          </div>
         ))}
-      </select>
+      </div>
     </div>
   );
 }
