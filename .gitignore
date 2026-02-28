@@ -1,3 +1,5 @@
+# Ignore local vehicle data JSON
+geotab_full_export.json
 # Python
 __pycache__/
 *.py[cod]

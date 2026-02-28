@@ -65,7 +65,7 @@ def get_vehicles():
         {
             "id": v.get("id"),
             "name": v.get("name"),
-            "vin": v.get("vin"),
+            "vin": v.get("vehicleIdentificationNumber"),
             "licensePlate": v.get("licensePlate"),
             "deviceType": v.get("deviceType"),
         }
@@ -144,7 +144,7 @@ def get_vehicle_data(vehicle_id: str):
     vehicle_name = device_info.get("name")
     vehicle_id = device_info.get("id")
     license_plate = device_info.get("licensePlate")
-    vin = device_info.get("vin")
+    vin = device_info.get("vehicleIdentificationNumber")
     is_active = device_info.get("isActive", True)
     last_reported = device_info.get("lastCommunicated", None)
 
@@ -160,22 +160,41 @@ def get_vehicle_data(vehicle_id: str):
     else:
         active_status = is_active
 
-    # Last reported position: try to get from latest GPS status
-    gps_status = get_latest_status("DiagnosticGpsPositionId")
-    last_position = None
-    if gps_status:
-        last_position = {
-            "latitude": gps_status.get("data", {}).get("latitude"),
-            "longitude": gps_status.get("data", {}).get("longitude"),
-            "dateTime": gps_status.get("dateTime")
-        }
-    else:
-        last_position = None
 
-    # Speed
-    speed_status = get_latest_status(DIAGNOSTICS["speed"][0])
-    speed = speed_status.get("data") if speed_status else None
-    speed_time = speed_status.get("dateTime") if speed_status else None
+    # Find the most recent status entry with latitude, longitude, speed, and dateTime
+    latest_gps_speed = None
+    for s in sorted(status_data, key=lambda x: x.get("dateTime", ""), reverse=True):
+        if (
+            s.get("latitude") is not None and
+            s.get("longitude") is not None and
+            s.get("speed") is not None and
+            s.get("dateTime")
+        ):
+            latest_gps_speed = s
+            break
+
+    if latest_gps_speed:
+        last_position = {
+            "latitude": latest_gps_speed["latitude"],
+            "longitude": latest_gps_speed["longitude"],
+            "dateTime": latest_gps_speed["dateTime"]
+        }
+        speed = latest_gps_speed["speed"]
+        speed_time = latest_gps_speed["dateTime"]
+    else:
+        # Fallback to previous logic
+        gps_status = get_latest_status("DiagnosticGpsPositionId")
+        if gps_status:
+            last_position = {
+                "latitude": gps_status.get("data", {}).get("latitude"),
+                "longitude": gps_status.get("data", {}).get("longitude"),
+                "dateTime": gps_status.get("dateTime")
+            }
+        else:
+            last_position = None
+        speed_status = get_latest_status(DIAGNOSTICS["speed"][0])
+        speed = speed_status.get("data") if speed_status else None
+        speed_time = speed_status.get("dateTime") if speed_status else None
 
     # Fuel
     fuel_status = get_latest_status(DIAGNOSTICS["fuel"][0])
@@ -207,27 +226,34 @@ def get_vehicle_data(vehicle_id: str):
     # Maintenance alert
     maintenance = get_latest_status(DIAGNOSTICS["maintenance"][0])
 
-    # Compose response
+    # Helper for user-friendly display
+    def friendly(val, label=None):
+        if val is None or val is False or val == "" or (isinstance(val, (list, dict)) and not val):
+            return f"No {label or 'data'}"
+        if isinstance(val, bool):
+            return "Yes" if val else f"No {label or 'data'}"
+        return val
+
     dashboard = {
-        "vehicleName": vehicle_name,
-        "vehicleId": vehicle_id,
-        "licensePlate": license_plate,
-        "vin": vin,
+        "vehicleName": friendly(vehicle_name, "vehicle name"),
+        "vehicleId": friendly(vehicle_id, "vehicle ID"),
+        "licensePlate": friendly(license_plate, "license plate"),
+        "vin": friendly(vin, "VIN"),
         "activeStatus": active_status,
-        "lastReportedPosition": last_position,
-        "speed": {"value": speed, "dateTime": speed_time},
-        "fuelStatus": fuel,
-        "seatbeltStatus": seatbelt,
+        "lastReportedPosition": last_position if last_position else "No position data",
+        "speed": {"value": friendly(speed, "speed"), "dateTime": speed_time or "No timestamp"},
+        "fuelStatus": friendly(fuel, "fuel status"),
+        "seatbeltStatus": friendly(seatbelt, "seatbelt status"),
         "speedingAlert": speeding_alert,
         "seatbeltWarning": seatbelt_warning,
-        "engineWarning": engine_fault,
+        "engineWarning": friendly(engine_fault, "engine warning"),
         "harshDrivingAlerts": {
-            "acceleration": harsh_accel,
-            "braking": harsh_brake,
-            "cornering": harsh_corner
+            "acceleration": friendly(harsh_accel, "harsh acceleration"),
+            "braking": friendly(harsh_brake, "harsh braking"),
+            "cornering": friendly(harsh_corner, "harsh cornering")
         },
-        "impactAlert": impact,
-        "maintenanceAlert": maintenance
+        "impactAlert": friendly(impact, "impact/accident"),
+        "maintenanceAlert": friendly(maintenance, "maintenance alert")
     }
 
     return {
