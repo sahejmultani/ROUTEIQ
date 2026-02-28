@@ -1,6 +1,6 @@
 
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 export default function VehicleDetails({ vehicle }) {
   const [data, setData] = useState(null);
@@ -9,7 +9,12 @@ export default function VehicleDetails({ vehicle }) {
   const [showVin, setShowVin] = useState(false);
 
 
-  useEffect(() => {
+
+  // Ref to store interval id
+  const intervalRef = useRef(null);
+
+  // Function to fetch vehicle data
+  const fetchVehicleData = () => {
     if (!vehicle) return;
     setLoading(true);
     setError(null);
@@ -18,6 +23,25 @@ export default function VehicleDetails({ vehicle }) {
       .then(setData)
       .catch(setError)
       .finally(() => setLoading(false));
+  };
+
+  // Fetch on vehicle change and set up interval
+  useEffect(() => {
+    fetchVehicleData();
+    // Clear any previous interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+    // Set up interval to refresh every 30 seconds
+    intervalRef.current = setInterval(() => {
+      fetchVehicleData();
+    }, 30000);
+    // Cleanup on unmount or vehicle change
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
   }, [vehicle]);
 
   if (!vehicle) return null;
