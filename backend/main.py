@@ -119,6 +119,25 @@ def get_vehicle_data(vehicle_id: str):
     status_raw = status_resp.json()
     status_data = status_raw.get("result", [])
 
+    # Fetch latest LogRecord for this device for accurate last position
+    logrecord_payload = {
+        "method": "Get",
+        "params": {
+            "typeName": "LogRecord",
+            "credentials": credentials,
+            "search": {"deviceSearch": {"id": vehicle_id}},
+            "resultsLimit": 1,
+            "sortBy": "dateTime desc"
+        },
+        "id": 3,
+        "jsonrpc": "2.0",
+        "sessionId": session_id
+    }
+    logrecord_resp = requests.post(GEOTAB_BASE_URL, json=logrecord_payload)
+    logrecord_resp.raise_for_status()
+    logrecord_raw = logrecord_resp.json()
+    logrecord_data = logrecord_raw.get("result", [])
+
     # Helper to extract latest diagnostic value by diagnostic id
     def get_latest_status(diagnostic_id):
         filtered = [s for s in status_data if s.get("diagnostic", {}).get("id") == diagnostic_id]
@@ -161,31 +180,21 @@ def get_vehicle_data(vehicle_id: str):
         active_status = is_active
 
 
-    # Find the most recent status entry with latitude, longitude, speed, and dateTime
-    latest_gps_speed = None
-    for s in sorted(status_data, key=lambda x: x.get("dateTime", ""), reverse=True):
-        if (
-            s.get("latitude") is not None and
-            s.get("longitude") is not None and
-            s.get("speed") is not None and
-            s.get("dateTime")
-        ):
-            latest_gps_speed = s
-            break
-
-    if latest_gps_speed:
+    # Use LogRecord for last position if available
+    if logrecord_data and len(logrecord_data) > 0:
+        log = logrecord_data[0]
         last_position = {
-            "latitude": latest_gps_speed["latitude"],
-            "longitude": latest_gps_speed["longitude"],
-            "dateTime": latest_gps_speed["dateTime"]
+            "latitude": log.get("latitude"),
+            "longitude": log.get("longitude"),
+            "dateTime": log.get("dateTime"),
+            "speed": log.get("speed")
         }
-        speed = latest_gps_speed["speed"]
-        speed_time = latest_gps_speed["dateTime"]
-        # Add these fields for direct access
-        latitude = latest_gps_speed["latitude"]
-        longitude = latest_gps_speed["longitude"]
-        speed_val = latest_gps_speed["speed"]
-        dateTime = latest_gps_speed["dateTime"]
+        latitude = log.get("latitude")
+        longitude = log.get("longitude")
+        dateTime = log.get("dateTime")
+        speed = log.get("speed")
+        speed_time = log.get("dateTime")
+        speed_val = log.get("speed")
     else:
         # Fallback to previous logic
         gps_status = get_latest_status("DiagnosticGpsPositionId")
