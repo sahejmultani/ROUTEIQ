@@ -129,7 +129,17 @@ export default function VehicleDetails({ vehicle }) {
         <li style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
           <span style={{ fontWeight: 600, color: '#222', minWidth: 120 }}>VIN:</span>
           <span style={{ marginLeft: 8 }}>
-            {showVin ? (dashboard.vin || '-') : <span style={{ color: '#888', cursor: 'pointer' }} onClick={() => setShowVin(true)}>Show VIN</span>}
+            {showVin ? (
+              <>
+                {dashboard.vin || '-'}{' '}
+                <button
+                  style={{ marginLeft: 8, fontSize: 13, padding: '2px 8px', borderRadius: 6, border: '1px solid #ccc', background: '#f7f8fa', cursor: 'pointer' }}
+                  onClick={() => setShowVin(false)}
+                >Hide VIN</button>
+              </>
+            ) : (
+              <span style={{ color: '#888', cursor: 'pointer' }} onClick={() => setShowVin(true)}>Show VIN</span>
+            )}
           </span>
         </li>
         <li style={{ marginBottom: 10, display: 'flex', alignItems: 'flex-start' }}>
