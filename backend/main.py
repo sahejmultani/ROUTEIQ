@@ -180,8 +180,82 @@ def get_vehicle_data(vehicle_id: str):
         active_status = is_active
 
 
-    # Use LogRecord for last position if available
-    if logrecord_data and len(logrecord_data) > 0:
+    # Try RequestLocation for real-time position, then Device.lastKnownPosition, then LogRecord, then StatusData
+    last_position = None
+    latitude = None
+    longitude = None
+    dateTime = None
+    speed = None
+    speed_time = None
+    speed_val = None
+    import time
+    # 1. Try RequestLocation (real-time)
+    try:
+        # Add a RequestLocation
+        request_location_payload = {
+            "method": "Add",
+            "params": {
+                "typeName": "RequestLocation",
+                "entity": {"device": {"id": vehicle_id}},
+                "credentials": credentials
+            },
+            "id": 4,
+            "jsonrpc": "2.0",
+            "sessionId": session_id
+        }
+        requests.post(GEOTAB_BASE_URL, json=request_location_payload)
+        # Poll for up to 5 seconds for a new RequestLocation result
+        for _ in range(5):
+            poll_payload = {
+                "method": "Get",
+                "params": {
+                    "typeName": "RequestLocation",
+                    "credentials": credentials,
+                    "search": {"deviceSearch": {"id": vehicle_id}},
+                },
+                "id": 5,
+                "jsonrpc": "2.0",
+                "sessionId": session_id
+            }
+            poll_resp = requests.post(GEOTAB_BASE_URL, json=poll_payload)
+            poll_resp.raise_for_status()
+            poll_data = poll_resp.json().get("result", [])
+            if poll_data and poll_data[0].get("latitude") is not None and poll_data[0].get("longitude") is not None:
+                req = poll_data[0]
+                last_position = {
+                    "latitude": req.get("latitude"),
+                    "longitude": req.get("longitude"),
+                    "dateTime": req.get("dateTime"),
+                    "speed": req.get("speed")
+                }
+                latitude = req.get("latitude")
+                longitude = req.get("longitude")
+                dateTime = req.get("dateTime")
+                speed = req.get("speed")
+                speed_time = req.get("dateTime")
+                speed_val = req.get("speed")
+                break
+            time.sleep(1)
+    except Exception:
+        pass
+    # 2. Device.lastKnownPosition
+    if last_position is None:
+        lkp = device_info.get("lastKnownPosition")
+        if lkp and lkp.get("latitude") is not None and lkp.get("longitude") is not None:
+            last_position = {
+                "latitude": lkp.get("latitude"),
+                "longitude": lkp.get("longitude"),
+                "dateTime": lkp.get("dateTime"),
+                "speed": lkp.get("speed")
+            }
+            latitude = lkp.get("latitude")
+            longitude = lkp.get("longitude")
+            dateTime = lkp.get("dateTime")
+            speed = lkp.get("speed")
+            speed_time = lkp.get("dateTime")
+            speed_val = lkp.get("speed")
+    # 3. LogRecord
+    if last_position is None and logrecord_data and len(logrecord_data) > 0:
         log = logrecord_data[0]
         last_position = {
             "latitude": log.get("latitude"),
@@ -195,8 +269,8 @@ def get_vehicle_data(vehicle_id: str):
         speed = log.get("speed")
         speed_time = log.get("dateTime")
         speed_val = log.get("speed")
-    else:
-        # Fallback to previous logic
+    # 4. StatusData fallback
+    if last_position is None:
         gps_status = get_latest_status("DiagnosticGpsPositionId")
         if gps_status:
             last_position = {
@@ -285,7 +359,11 @@ def get_vehicle_data(vehicle_id: str):
     return {
         "dashboard": dashboard,
         "device": device_info,
-        "statusData": status_data
+        "statusData": status_data,
+        "_debug": {
+            "queried_vehicle_id": vehicle_id,
+            "logrecord_data": logrecord_data
+        }
     }
 
 class HeatCluster(BaseModel):

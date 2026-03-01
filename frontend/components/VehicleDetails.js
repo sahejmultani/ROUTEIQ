@@ -60,7 +60,42 @@ export default function VehicleDetails({ vehicle }) {
 
   // Early returns after all hooks
   if (!vehicle) return null;
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 80,
+        right: 0,
+        width: 400,
+        maxWidth: '97vw',
+        height: 'calc(100vh - 100px)',
+        background: 'rgba(255,255,255,0.97)',
+        borderTopLeftRadius: 20,
+        borderBottomLeftRadius: 20,
+        boxShadow: '-2px 0 12px #e3e8f0',
+        padding: 28,
+        zIndex: 200,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: 'Poppins, Inter, Arial, sans-serif',
+      }}>
+        <div style={{ width: '80%', margin: '0 auto', marginBottom: 18 }}>
+          <div style={{ height: 6, width: '100%', background: '#e3e8f0', borderRadius: 6, overflow: 'hidden' }}>
+            <div style={{ width: '100%', height: '100%', background: 'linear-gradient(90deg, #43a047 30%, #e3e8f0 100%)', animation: 'loadingBar 1.2s linear infinite' }} />
+          </div>
+        </div>
+        <span style={{ color: '#888', fontSize: 17, fontWeight: 500 }}>Loading vehicle info...</span>
+        <style>{`
+          @keyframes loadingBar {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+          }
+        `}</style>
+      </div>
+    );
+  }
   if (error) return null;
   if (!data) return null;
   // Helper for status dot
