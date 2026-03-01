@@ -23,18 +23,14 @@ export default function VehicleDetails({ vehicle }) {
       .finally(() => setLoading(false));
   };
 
-  // Fetch on vehicle change and set up interval
+  // Fetch only when vehicle changes
   useEffect(() => {
     fetchVehicleData();
-    // Clear any previous interval
+    // Cleanup: clear any previous interval (if any)
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
     }
-    // Set up interval to refresh every 30 seconds
-    intervalRef.current = setInterval(() => {
-      fetchVehicleData();
-    }, 30000);
-    // Cleanup on unmount or vehicle change
+    // No interval set
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
