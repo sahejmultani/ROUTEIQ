@@ -3,14 +3,12 @@
 import { useEffect, useState, useRef } from 'react';
 
 export default function VehicleDetails({ vehicle }) {
+  // All hooks at the top, before any return
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showVin, setShowVin] = useState(false);
-
-
-
-  // Ref to store interval id
+  const [lastPositionAddress, setLastPositionAddress] = useState(null);
   const intervalRef = useRef(null);
 
   // Function to fetch vehicle data
@@ -44,12 +42,31 @@ export default function VehicleDetails({ vehicle }) {
     };
   }, [vehicle]);
 
+  const dashboard = data && data.dashboard ? data.dashboard : {};
+
+  // Reverse geocode last position when it changes
+  useEffect(() => {
+    const pos = dashboard.lastReportedPosition;
+    if (pos && typeof pos === 'object' && pos.latitude != null && pos.longitude != null) {
+      const lat = pos.latitude;
+      const lng = pos.longitude;
+      // Use Nominatim OpenStreetMap API for reverse geocoding
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`)
+        .then(res => res.json())
+        .then(json => {
+          setLastPositionAddress(json.display_name || null);
+        })
+        .catch(() => setLastPositionAddress(null));
+    } else {
+      setLastPositionAddress(null);
+    }
+  }, [dashboard.lastReportedPosition]);
+
+  // Early returns after all hooks
   if (!vehicle) return null;
   if (loading) return null;
   if (error) return null;
   if (!data) return null;
-
-  const dashboard = data.dashboard || {};
   // Helper for status dot
   const StatusDot = ({ active }) => (
     <span style={{
@@ -115,12 +132,19 @@ export default function VehicleDetails({ vehicle }) {
             {showVin ? (dashboard.vin || '-') : <span style={{ color: '#888', cursor: 'pointer' }} onClick={() => setShowVin(true)}>Show VIN</span>}
           </span>
         </li>
-        <li style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
+        <li style={{ marginBottom: 10, display: 'flex', alignItems: 'flex-start' }}>
           <span style={{ fontWeight: 600, color: '#222', minWidth: 120 }}>Last Position:</span>
-          <span style={{ marginLeft: 8 }}>
-            {dashboard.lastReportedPosition && typeof dashboard.lastReportedPosition === 'object' && dashboard.lastReportedPosition.latitude !== undefined
-              ? `${Number.isFinite(dashboard.lastReportedPosition.latitude) ? dashboard.lastReportedPosition.latitude.toFixed(5) : dashboard.lastReportedPosition.latitude}, ${Number.isFinite(dashboard.lastReportedPosition.longitude) ? dashboard.lastReportedPosition.longitude.toFixed(5) : dashboard.lastReportedPosition.longitude} (${dashboard.lastReportedPosition.dateTime ? dashboard.lastReportedPosition.dateTime.slice(0,19).replace('T',' ') : '-'})`
-              : (typeof dashboard.lastReportedPosition === 'string' ? dashboard.lastReportedPosition : '-')}
+          <span style={{ marginLeft: 8, display: 'flex', flexDirection: 'column' }}>
+            {dashboard.lastReportedPosition && typeof dashboard.lastReportedPosition === 'object' && dashboard.lastReportedPosition.latitude !== undefined ? (
+              <>
+                <span>
+                  {Number.isFinite(dashboard.lastReportedPosition.latitude) ? dashboard.lastReportedPosition.latitude.toFixed(5) : dashboard.lastReportedPosition.latitude}, {Number.isFinite(dashboard.lastReportedPosition.longitude) ? dashboard.lastReportedPosition.longitude.toFixed(5) : dashboard.lastReportedPosition.longitude} ({dashboard.lastReportedPosition.dateTime ? dashboard.lastReportedPosition.dateTime.slice(0,19).replace('T',' ') : '-'})
+                </span>
+                <span style={{ color: '#888', fontSize: 14, marginTop: 2 }}>
+                  {lastPositionAddress ? lastPositionAddress : 'Looking up address...'}
+                </span>
+              </>
+            ) : (typeof dashboard.lastReportedPosition === 'string' ? dashboard.lastReportedPosition : '-')}
           </span>
         </li>
         <li style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
