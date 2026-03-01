@@ -126,7 +126,7 @@ def get_vehicle_data(vehicle_id: str):
             "typeName": "LogRecord",
             "credentials": credentials,
             "search": {"deviceSearch": {"id": vehicle_id}},
-            "resultsLimit": 1,
+            "resultsLimit": 500,
             "sortBy": "dateTime desc"
         },
         "id": 3,
@@ -137,6 +137,61 @@ def get_vehicle_data(vehicle_id: str):
     logrecord_resp.raise_for_status()
     logrecord_raw = logrecord_resp.json()
     logrecord_data = logrecord_raw.get("result", [])
+
+    # Fetch recent Trip data (contains driving events)
+    trip_payload = {
+        "method": "Get",
+        "params": {
+            "typeName": "Trip",
+            "credentials": credentials,
+            "search": {"deviceSearch": {"id": vehicle_id}},
+            "resultsLimit": 5,
+            "sortBy": "startDateTime desc"
+        },
+        "id": 6,
+        "jsonrpc": "2.0",
+        "sessionId": session_id
+    }
+    trip_resp = requests.post(GEOTAB_BASE_URL, json=trip_payload)
+    trip_resp.raise_for_status()
+    trip_raw = trip_resp.json()
+    trip_data = trip_raw.get("result", [])
+
+    # Fetch recent Exception data (violations, accidents)
+    exception_payload = {
+        "method": "Get",
+        "params": {
+            "typeName": "Exception",
+            "credentials": credentials,
+            "search": {"deviceSearch": {"id": vehicle_id}},
+            "resultsLimit": 10,
+            "sortBy": "activeTime desc"
+        },
+        "id": 7,
+        "jsonrpc": "2.0",
+        "sessionId": session_id
+    }
+    exception_resp = requests.post(GEOTAB_BASE_URL, json=exception_payload)
+    exception_resp.raise_for_status()
+    exception_raw = exception_resp.json()
+    exception_data = exception_raw.get("result", [])
+
+    # Fetch DueDiagnostics (maintenance items)
+    due_diagnostics_payload = {
+        "method": "Get",
+        "params": {
+            "typeName": "DueDiagnostic",
+            "credentials": credentials,
+            "search": {"deviceSearch": {"id": vehicle_id}}
+        },
+        "id": 8,
+        "jsonrpc": "2.0",
+        "sessionId": session_id
+    }
+    due_diag_resp = requests.post(GEOTAB_BASE_URL, json=due_diagnostics_payload)
+    due_diag_resp.raise_for_status()
+    due_diag_raw = due_diag_resp.json()
+    due_diagnostics_data = due_diag_raw.get("result", [])
 
     # Helper to extract latest diagnostic value by diagnostic id
     def get_latest_status(diagnostic_id):
@@ -256,6 +311,7 @@ def get_vehicle_data(vehicle_id: str):
             speed_val = lkp.get("speed")
     # 3. LogRecord
     if last_position is None and logrecord_data and len(logrecord_data) > 0:
+        # Get most recent LogRecord (first one since sorted by dateTime desc)
         log = logrecord_data[0]
         last_position = {
             "latitude": log.get("latitude"),
@@ -306,20 +362,118 @@ def get_vehicle_data(vehicle_id: str):
     # Seatbelt warning
     seatbelt_warning = seatbelt is not None and seatbelt == 0 and speed and speed > 5
 
+    # Recent violations/exceptions (replaces engine warning)
+    recent_violations = []
+    if exception_data:
+        for exc in exception_data[:3]:  # Get top 3 recent exceptions
+            recent_violations.append({
+                "type": exc.get("exceptionType", {}).get("name", "Unknown"),
+                "activeTime": exc.get("activeTime"),
+                "severity": exc.get("severity", "Normal")
+            })
+
+    # Trip summary (for driving events and harsh events)
+    trip_summary = None
+    harsh_driving_count = 0
+    
+    # Calculate real-time distance and average speed from GPS LogRecord data
+    real_distance_km = 0
+    real_avg_speed = 0
+    real_speeds = []
+    
+    if logrecord_data and len(logrecord_data) > 1:
+        # Sort by dateTime ascending (oldest to newest) for correct distance calculation
+        sorted_logs = sorted(logrecord_data, key=lambda x: x.get("dateTime", ""), reverse=False)
+        
+        # Haversine formula to calculate distance between two GPS points
+        def haversine_distance(lat1, lon1, lat2, lon2):
+            from math import radians, cos, sin, asin, sqrt
+            # All arguments are in degrees
+            # Convert decimal degrees to radians
+            lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+            # Haversine formula
+            dlat = lat2 - lat1
+            dlon = lon2 - lon1
+            a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+            c = 2 * asin(sqrt(a))
+            km = 6371 * c  # Radius of earth in kilometers
+            return km
+        
+        # Calculate distance between consecutive GPS points
+        for i in range(len(sorted_logs) - 1):
+            current = sorted_logs[i]
+            next_point = sorted_logs[i + 1]
+            
+            # Get coordinates
+            lat1 = current.get("latitude")
+            lon1 = current.get("longitude")
+            lat2 = next_point.get("latitude")
+            lon2 = next_point.get("longitude")
+            
+            # Calculate distance if both points have valid coordinates
+            if lat1 is not None and lon1 is not None and lat2 is not None and lon2 is not None:
+                distance = haversine_distance(lat1, lon1, lat2, lon2)
+                real_distance_km += distance
+            
+            # Collect speeds
+            speed = next_point.get("speed")
+            if speed is not None and speed > 0:
+                real_speeds.append(speed)
+        
+        # Calculate average speed from collected values
+        if real_speeds:
+            real_avg_speed = sum(real_speeds) / len(real_speeds)
+    
+    # Calculate average speed from last 5 speed recordings
+    avg_speed_from_data = None
+    speed_records = [s for s in status_data if s.get("diagnostic", {}).get("id") == DIAGNOSTICS["speed"][0]]
+    if speed_records:
+        # Get last 5 speed recordings and calculate average
+        recent_speeds = speed_records[-5:]  # Last 5 records
+        speed_values = [s.get("data") for s in recent_speeds if s.get("data") is not None]
+        if speed_values:
+            avg_speed_from_data = sum(speed_values) / len(speed_values)
+    
+    if trip_data:
+        latest_trip = trip_data[0]
+        # Parse duration strings like "00:55:00" to total seconds
+        def parse_duration(duration_str):
+            if not duration_str or not isinstance(duration_str, str):
+                return 0
+            parts = duration_str.split(':')
+            if len(parts) == 3:
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+            return 0
+
+        trip_summary = {
+            "startDateTime": latest_trip.get("start"),
+            "stopDateTime": latest_trip.get("stop"),
+            "distance": round(real_distance_km, 2) if real_distance_km > 0 else latest_trip.get("distance"),
+            "drivingDuration": latest_trip.get("drivingDuration"),
+            "idlingDuration": latest_trip.get("idlingDuration"),
+            "avgSpeed": round(real_avg_speed, 2) if real_avg_speed > 0 else (avg_speed_from_data if avg_speed_from_data is not None else latest_trip.get("averageSpeed")),
+            "maxSpeed": latest_trip.get("maximumSpeed"),
+            "speedRange1Distance": latest_trip.get("speedRange1Duration"),  # Low speed range
+            "speedRange2Distance": latest_trip.get("speedRange2Duration"),  # Medium speed range
+            "speedRange3Distance": latest_trip.get("speedRange3Duration"),  # High speed range
+            "engineHours": latest_trip.get("engineHours"),
+        }
+        # No harsh events available, but we can flag if maxSpeed is high
+        harsh_driving_count = 1 if latest_trip.get("maximumSpeed", 0) > 100 else 0
+
+    # Maintenance alerts (from DueDiagnostics)
+    maintenance_items = []
+    if due_diagnostics_data:
+        for item in due_diagnostics_data[:3]:  # Get top 3
+            maintenance_items.append({
+                "diagnostic": item.get("diagnostic", {}).get("name", "Unknown"),
+                "kilometers": item.get("kilometers"),
+                "days": item.get("days"),
+            })
+
     # Engine/malfunction alert
     engine_fault_status = get_latest_status(DIAGNOSTICS["engine_fault"][0])
     engine_fault = engine_fault_status.get("data") if engine_fault_status else None
-
-    # Harsh driving alerts
-    harsh_accel = get_latest_status(DIAGNOSTICS["harsh_accel"][0])
-    harsh_brake = get_latest_status(DIAGNOSTICS["harsh_brake"][0])
-    harsh_corner = get_latest_status(DIAGNOSTICS["harsh_corner"][0])
-
-    # Impact/accident alert
-    impact = get_latest_status(DIAGNOSTICS["impact"][0])
-
-    # Maintenance alert
-    maintenance = get_latest_status(DIAGNOSTICS["maintenance"][0])
 
     # Helper for user-friendly display
     def friendly(val, label=None):
@@ -329,6 +483,7 @@ def get_vehicle_data(vehicle_id: str):
             return "Yes" if val else f"No {label or 'data'}"
         return val
 
+    # Dashboard response with new fields
     dashboard = {
         "vehicleName": friendly(vehicle_name, "vehicle name"),
         "vehicleId": friendly(vehicle_id, "vehicle ID"),
@@ -345,15 +500,13 @@ def get_vehicle_data(vehicle_id: str):
         "seatbeltStatus": friendly(seatbelt, "seatbelt status"),
         "speedingAlert": speeding_alert,
         "seatbeltWarning": seatbelt_warning,
-        # Return full diagnostic objects for alerts
-        "engineWarning": engine_fault_status if engine_fault_status else None,
-        "harshDrivingAlerts": {
-            "acceleration": harsh_accel if harsh_accel else None,
-            "braking": harsh_brake if harsh_brake else None,
-            "cornering": harsh_corner if harsh_corner else None
-        },
-        "impactAlert": impact if impact else None,
-        "maintenanceAlert": maintenance if maintenance else None
+        # Recent violations/exceptions instead of engine warning
+        "recentViolations": recent_violations if recent_violations else None,
+        # Trip summary with harsh driving counts
+        "tripSummary": trip_summary if trip_summary else None,
+        "harshDrivingCount": harsh_driving_count,
+        # Maintenance items instead of single maintenance alert
+        "maintenanceItems": maintenance_items if maintenance_items else None,
     }
 
     return {
@@ -362,7 +515,13 @@ def get_vehicle_data(vehicle_id: str):
         "statusData": status_data,
         "_debug": {
             "queried_vehicle_id": vehicle_id,
-            "logrecord_data": logrecord_data
+            "logrecord_data": logrecord_data,
+            "trip_count": len(trip_data),
+            "exception_count": len(exception_data),
+            "due_diagnostics_count": len(due_diagnostics_data),
+            "trip_sample": trip_data[0] if trip_data else None,
+            "exception_sample": exception_data[0] if exception_data else None,
+            "due_diag_sample": due_diagnostics_data[0] if due_diagnostics_data else None,
         }
     }
 
