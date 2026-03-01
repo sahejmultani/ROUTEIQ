@@ -271,14 +271,15 @@ def get_vehicle_data(vehicle_id: str):
         "seatbeltStatus": friendly(seatbelt, "seatbelt status"),
         "speedingAlert": speeding_alert,
         "seatbeltWarning": seatbelt_warning,
-        "engineWarning": friendly(engine_fault, "engine warning"),
+        # Return full diagnostic objects for alerts
+        "engineWarning": engine_fault_status if engine_fault_status else None,
         "harshDrivingAlerts": {
-            "acceleration": friendly(harsh_accel, "harsh acceleration"),
-            "braking": friendly(harsh_brake, "harsh braking"),
-            "cornering": friendly(harsh_corner, "harsh cornering")
+            "acceleration": harsh_accel if harsh_accel else None,
+            "braking": harsh_brake if harsh_brake else None,
+            "cornering": harsh_corner if harsh_corner else None
         },
-        "impactAlert": friendly(impact, "impact/accident"),
-        "maintenanceAlert": friendly(maintenance, "maintenance alert")
+        "impactAlert": impact if impact else None,
+        "maintenanceAlert": maintenance if maintenance else None
     }
 
     return {
