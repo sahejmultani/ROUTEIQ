@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/heatmap';
 const VEHICLE_LOCATIONS_URL = 'http://localhost:8000/api/vehicle_locations';
+const INCIDENT_LOCATIONS_URL = 'http://localhost:8000/api/incident_locations';
 
 // Create custom vehicle marker icon
 const vehicleIcon = L.icon({
@@ -14,9 +15,34 @@ const vehicleIcon = L.icon({
   popupAnchor: [0, -16],
 });
 
+// Get color for incident type
+const getIncidentColor = (type) => {
+  switch(type) {
+    case 'Aggressive Speeding': return '#c0392b';
+    case 'Harsh Braking': return '#e74c3c';
+    case 'Rapid Acceleration': return '#f39c12';
+    case 'Sharp Turn': return '#e67e22';
+    case 'Slow Driving': return '#9b59b6';
+    default: return '#95a5a6';
+  }
+};
+
+// Get emoji for incident type
+const getIncidentEmoji = (type) => {
+  switch(type) {
+    case 'Aggressive Speeding': return '⚡';
+    case 'Harsh Braking': return '🛑';
+    case 'Rapid Acceleration': return '📈';
+    case 'Sharp Turn': return '🔄';
+    case 'Slow Driving': return '🐢';
+    default: return '⚠️';
+  }
+};
+
 export default function HeatMap() {
   const [clusters, setClusters] = useState([]);
   const [vehicles, setVehicles] = useState([]);
+  const [incidents, setIncidents] = useState([]);
 
   useEffect(() => {
     // Fetch heatmap clusters
@@ -30,6 +56,20 @@ export default function HeatMap() {
       .then((res) => res.json())
       .then(setVehicles)
       .catch(console.error);
+    
+    // Fetch incident locations
+    fetch(INCIDENT_LOCATIONS_URL)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        console.log('Incident locations fetched:', data.incidents ? data.incidents.length : 0);
+        setIncidents(data.incidents || []);
+      })
+      .catch((error) => {
+        console.error('Failed to fetch incident locations:', error);
+      });
   }, []);
 
   // Group vehicles by location
@@ -113,6 +153,71 @@ export default function HeatMap() {
               </div>
             </Popup>
           </Marker>
+        );
+      })}
+      
+      {/* Incident Location Markers - Using CircleMarker for better compatibility */}
+      {incidents && incidents.length > 0 && incidents.map((incident, idx) => {
+        // Get primary incident type
+        const primaryType = Object.entries(incident.incidents).sort((a, b) => b[1] - a[1])[0];
+        const primaryTypeLabel = primaryType ? primaryType[0] : 'Unknown';
+        const color = getIncidentColor(primaryTypeLabel);
+        
+        return (
+          <CircleMarker
+            key={`incident-${idx}`}
+            center={[incident.latitude, incident.longitude]}
+            radius={12}
+            pathOptions={{
+              color: color,
+              fillColor: color,
+              fillOpacity: 0.8,
+              weight: 3,
+              opacity: 1,
+            }}
+          >
+            <Popup>
+              <div style={{
+                minWidth: 280,
+                background: '#fff',
+                borderRadius: 12,
+                boxShadow: '0 2px 8px #eee',
+                padding: 12,
+                color: '#222',
+                fontFamily: 'Inter, Arial, sans-serif',
+              }}>
+                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12, color: color }}>
+                  📍 {primaryTypeLabel}
+                </div>
+                <div style={{ marginBottom: 12, fontSize: 13 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 8, color: '#666' }}>Total Incidents: {incident.total_incidents}</div>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '8px'
+                  }}>
+                    {Object.entries(incident.incidents).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
+                      <div key={type} style={{
+                        background: getIncidentColor(type),
+                        color: '#fff',
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        textAlign: 'center'
+                      }}>
+                        <div>{getIncidentEmoji(type)} {type}</div>
+                        <div style={{ fontSize: '11px', marginTop: '2px' }}>{count} incident{count > 1 ? 's' : ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: '#666', marginTop: 8 }}>
+                  Lat: {incident.latitude.toFixed(4)}, Lng: {incident.longitude.toFixed(4)}
+                </div>
+              </div>
+            </Popup>
+          </CircleMarker>
         );
       })}
       

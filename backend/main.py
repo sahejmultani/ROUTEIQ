@@ -892,6 +892,198 @@ def get_advanced_risk_analysis(
     }
 
 
+@app.get("/api/incident_locations")
+def get_incident_locations(time_period_hours: int = 72):
+    """
+    Get incident locations grouped and clustered for map visualization.
+    Returns incident hotspots with counts by type.
+    """
+    try:
+        login_result = geotab_login()
+        credentials = login_result["credentials"]
+        session_id = credentials["sessionId"]
+    except Exception as e:
+        return {"incidents": [], "summary": {}}
+    
+    from geotab_helpers import GEOTAB_BASE_URL
+    import requests
+    from datetime import datetime, timedelta
+    
+    vehicles = fetch_vehicles(session_id, credentials)
+    alerts = []
+    
+    for vehicle in vehicles[:50]:
+        vehicle_id_val = vehicle.get("id")
+        vehicle_name = vehicle.get("name", "Unknown")
+        
+        # Fetch comprehensive GPS history
+        logrecord_payload = {
+            "method": "Get",
+            "params": {
+                "typeName": "LogRecord",
+                "credentials": credentials,
+                "search": {"deviceSearch": {"id": vehicle_id_val}},
+                "resultsLimit": 500,
+                "sortBy": "dateTime desc"
+            },
+            "id": 1,
+            "jsonrpc": "2.0",
+            "sessionId": session_id
+        }
+        
+        try:
+            resp = requests.post(GEOTAB_BASE_URL, json=logrecord_payload, timeout=10)
+            logrecords = resp.json().get("result", [])
+        except Exception:
+            continue
+        
+        # Sort chronologically
+        logrecords = sorted(logrecords, key=lambda x: x.get("dateTime", ""), reverse=False)
+        
+        # Collect valid records
+        filtered_records = []
+        for record in logrecords:
+            try:
+                if record.get("latitude") and record.get("longitude") and record.get("speed") is not None:
+                    filtered_records.append(record)
+            except:
+                pass
+        
+        if len(filtered_records) < 2:
+            continue
+        
+        # Analyze consecutive points for incidents
+        for i in range(1, len(filtered_records)):
+            prev = filtered_records[i - 1]
+            curr = filtered_records[i]
+            
+            prev_speed = prev.get("speed", 0)
+            curr_speed = curr.get("speed", 0)
+            speed_change = abs(curr_speed - prev_speed)
+            
+            # Calculate time difference
+            try:
+                prev_time = datetime.fromisoformat(prev.get("dateTime", "").replace("Z", "+00:00"))
+                curr_time = datetime.fromisoformat(curr.get("dateTime", "").replace("Z", "+00:00"))
+                time_diff_seconds = (curr_time - prev_time).total_seconds()
+            except:
+                time_diff_seconds = None
+            
+            lat = curr.get("latitude")
+            lng = curr.get("longitude")
+            
+            # Calculate area speed limit
+            area_start = max(0, i - 15)
+            area_end = min(len(filtered_records), i + 15)
+            area_speeds = [r.get("speed", 0) for r in filtered_records[area_start:area_end]]
+            estimated_limit = estimate_speed_limit_v2(area_speeds)
+            
+            # Collect all incident types at this location
+            incident_type = None
+            
+            # Aggressive Speeding
+            if curr_speed > 5 and curr_speed > estimated_limit * 1.20:
+                excess = curr_speed - estimated_limit
+                if excess > 5:
+                    incident_type = "Aggressive Speeding"
+            
+            # Slow Driving
+            elif estimated_limit > 60 and curr_speed > 0 and curr_speed < estimated_limit * 0.5:
+                deficit = estimated_limit - curr_speed
+                if deficit > 20:
+                    incident_type = "Slow Driving"
+            
+            # Harsh Braking
+            elif curr_speed < prev_speed and speed_change >= 5:
+                acceleration = speed_change / time_diff_seconds if time_diff_seconds and time_diff_seconds > 0 else 0
+                is_harsh = (speed_change >= 15) or (speed_change >= 5 and acceleration >= 5)
+                if is_harsh:
+                    incident_type = "Harsh Braking"
+            
+            # Rapid Acceleration
+            elif curr_speed > prev_speed and speed_change >= 5:
+                acceleration = speed_change / time_diff_seconds if time_diff_seconds and time_diff_seconds > 0 else 0
+                is_rapid = (speed_change >= 15) or (speed_change >= 5 and acceleration >= 5)
+                if is_rapid:
+                    incident_type = "Rapid Acceleration"
+            
+            if incident_type:
+                alerts.append({
+                    "latitude": lat,
+                    "longitude": lng,
+                    "type": incident_type,
+                    "vehicle_id": vehicle_id_val,
+                    "vehicle_name": vehicle_name
+                })
+        
+        # Check for sharp turns
+        for i in range(2, len(filtered_records)):
+            prev_prev = filtered_records[i - 2]
+            prev = filtered_records[i - 1]
+            curr = filtered_records[i]
+            
+            lat1, lng1 = prev_prev.get("latitude"), prev_prev.get("longitude")
+            lat2, lng2 = prev.get("latitude"), prev.get("longitude")
+            lat3, lng3 = curr.get("latitude"), curr.get("longitude")
+            
+            if all([lat1, lng1, lat2, lng2, lat3, lng3]):
+                angle1 = calculate_bearing(lat1, lng1, lat2, lng2)
+                angle2 = calculate_bearing(lat2, lng2, lat3, lng3)
+                
+                turn_angle = abs(angle2 - angle1)
+                if turn_angle > 180:
+                    turn_angle = 360 - turn_angle
+                
+                if turn_angle > 60:
+                    speed = curr.get("speed", 0)
+                    if speed > 30:
+                        alerts.append({
+                            "latitude": lat3,
+                            "longitude": lng3,
+                            "type": "Sharp Turn",
+                            "vehicle_id": vehicle_id_val,
+                            "vehicle_name": vehicle_name
+                        })
+    
+    # Cluster incidents by location (0.005 degree grid ~500 meters)
+    incident_clusters = {}
+    for alert in alerts:
+        # Round to 3 decimals (~100 meters accuracy)
+        lat_key = round(alert["latitude"], 3)
+        lng_key = round(alert["longitude"], 3)
+        cluster_key = f"{lat_key},{lng_key}"
+        
+        if cluster_key not in incident_clusters:
+            incident_clusters[cluster_key] = {
+                "latitude": lat_key,
+                "longitude": lng_key,
+                "incidents": {}
+            }
+        
+        incident_type = alert["type"]
+        if incident_type not in incident_clusters[cluster_key]["incidents"]:
+            incident_clusters[cluster_key]["incidents"][incident_type] = 0
+        
+        incident_clusters[cluster_key]["incidents"][incident_type] += 1
+    
+    # Convert to list and sort by total incident count
+    incident_list = []
+    for cluster in incident_clusters.values():
+        total_count = sum(cluster["incidents"].values())
+        cluster["total_incidents"] = total_count
+        incident_list.append(cluster)
+    
+    incident_list.sort(key=lambda x: x["total_incidents"], reverse=True)
+    
+    return {
+        "incidents": incident_list[:50],  # Top 50 hotspots
+        "summary": {
+            "total_hotspots": len(incident_list),
+            "total_incidents": len(alerts)
+        }
+    }
+
+
 def calculate_bearing(lat1, lng1, lat2, lng2):
     """Calculate bearing between two GPS points."""
     import math
