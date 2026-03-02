@@ -48,9 +48,6 @@ export default function Navbar() {
           <Link href="/risk-analysis" legacyBehavior>
             <a style={{ color: '#e74c3c', fontWeight: 700, fontSize: 18, textDecoration: 'none', padding: '8px 0', borderBottom: '2.5px solid transparent', transition: 'border 0.2s', borderRadius: 4 }} onMouseOver={e => e.target.style.borderBottom = '2.5px solid #e74c3c'} onMouseOut={e => e.target.style.borderBottom = '2.5px solid transparent'}>Risk Analysis</a>
           </Link>
-          <Link href="/routing" legacyBehavior>
-            <a style={{ color: '#f39c12', fontWeight: 700, fontSize: 18, textDecoration: 'none', padding: '8px 0', borderBottom: '2.5px solid transparent', transition: 'border 0.2s', borderRadius: 4 }} onMouseOver={e => e.target.style.borderBottom = '2.5px solid #f39c12'} onMouseOut={e => e.target.style.borderBottom = '2.5px solid transparent'}>Routes</a>
-          </Link>
         </div>
       </div>
     </nav>

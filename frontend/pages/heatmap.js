@@ -204,7 +204,6 @@ export default function HeatmapPage() {
         <nav className={styles.nav}>
           <Link href="/">Dashboard</Link>
           <Link href="/risk-analysis">Risk Analysis</Link>
-          <Link href="/routing">Routing</Link>
         </nav>
       </header>
 
