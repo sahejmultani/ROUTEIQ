@@ -108,6 +108,50 @@
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
+/* Autocomplete Container */
+.autoCompleteContainer {
+  position: relative;
+  width: 100%;
+}
+
+.suggestionsList {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-top: none;
+  border-radius: 0 0 5px 5px;
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+}
+
+.suggestionItem {
+  padding: 0.75rem;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.suggestionItem:hover {
+  background-color: #f5f5ff;
+}
+
+.suggestionItem:last-child {
+  border-bottom: none;
+}
+
+.suggestionText {
+  font-size: 0.9rem;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .geocodedInfo {
   margin-top: 0.5rem;
   padding: 0.75rem;
@@ -413,4 +457,43 @@
 .instructions strong {
   color: #333;
   font-weight: 600;
+}
+/* Map Section */
+.mapSection {
+  background: white;
+  padding: 2rem;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  grid-column: 1 / -1;
+  position: relative;
+}
+
+.mapSection h2 {
+  margin-top: 0;
+  color: #333;
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.mapLoading {
+  width: 100%;
+  height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f9f9f9;
+  border-radius: 8px;
+  color: #999;
+  font-size: 1rem;
+}
+
+/* Make content grid responsive for map */
+@media (max-width: 1500px) {
+  .content {
+    grid-template-columns: 1fr;
+  }
+  
+  .mapSection {
+    grid-column: 1;
+  }
 }

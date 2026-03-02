@@ -1,12 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import styles from '../styles/routing.module.css';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+// Dynamically import map component (for SSR compatibility)
+const RouteMap = dynamic(() => import('../components/RouteMap'), {
+  ssr: false,
+  loading: () => <div className={styles.mapLoading}>Loading map...</div>,
+});
 
 export default function Routing() {
   const [startAddress, setStartAddress] = useState('');
   const [endAddress, setEndAddress] = useState('');
+  const [startAddressSuggestions, setStartAddressSuggestions] = useState([]);
+  const [endAddressSuggestions, setEndAddressSuggestions] = useState([]);
+  const [showStartSuggestions, setShowStartSuggestions] = useState(false);
+  const [showEndSuggestions, setShowEndSuggestions] = useState(false);
   const [startCoords, setStartCoords] = useState(null);
   const [endCoords, setEndCoords] = useState(null);
   const [routes, setRoutes] = useState(null);
@@ -48,63 +59,71 @@ export default function Routing() {
     }
   };
 
-  // Geocode address when user finishes typing
-  const geocodeAddress = async (address) => {
-    if (!address || address.length < 3) return null;
+  // Get address suggestions from Nominatim
+  const getAddressSuggestions = async (query) => {
+    if (!query || query.length < 2) return [];
 
     try {
-      const response = await fetch(`${API_URL}/api/geocode?address=${encodeURIComponent(address)}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`,
+        {
+          headers: {
+            'User-Agent': 'RouteIQ/1.0',
+          },
+        }
+      );
 
-      if (!response.ok) throw new Error('Geocoding failed');
+      if (!response.ok) return [];
       const data = await response.json();
-
-      if (data.error) {
-        setError(`Geocoding error: ${data.error}`);
-        return null;
-      }
-
-      return {
-        latitude: data.latitude,
-        longitude: data.longitude,
-        address: data.display_name || address
-      };
+      return data.map(item => ({
+        display_name: item.display_name,
+        latitude: parseFloat(item.lat),
+        longitude: parseFloat(item.lon),
+      }));
     } catch (err) {
-      setError(`Failed to geocode: ${err.message}`);
-      return null;
+      console.error('Error fetching suggestions:', err);
+      return [];
     }
   };
 
-  const handleStartAddressChange = (e) => {
-    setStartAddress(e.target.value);
-  };
-
-  const handleEndAddressChange = (e) => {
-    setEndAddress(e.target.value);
-  };
-
-  const handleStartAddressBlur = async () => {
-    if (startAddress) {
-      const coords = await geocodeAddress(startAddress);
-      if (coords) {
-        setStartCoords(coords);
-        setError(null);
-      }
+  const handleStartAddressChange = async (e) => {
+    const value = e.target.value;
+    setStartAddress(value);
+    
+    if (value.length > 1) {
+      const suggestions = await getAddressSuggestions(value);
+      setStartAddressSuggestions(suggestions);
+      setShowStartSuggestions(suggestions.length > 0);
+    } else {
+      setShowStartSuggestions(false);
     }
   };
 
-  const handleEndAddressBlur = async () => {
-    if (endAddress) {
-      const coords = await geocodeAddress(endAddress);
-      if (coords) {
-        setEndCoords(coords);
-        setError(null);
-      }
+  const handleEndAddressChange = async (e) => {
+    const value = e.target.value;
+    setEndAddress(value);
+    
+    if (value.length > 1) {
+      const suggestions = await getAddressSuggestions(value);
+      setEndAddressSuggestions(suggestions);
+      setShowEndSuggestions(suggestions.length > 0);
+    } else {
+      setShowEndSuggestions(false);
     }
+  };
+
+  const selectStartSuggestion = (suggestion) => {
+    setStartAddress(suggestion.display_name);
+    setStartCoords(suggestion);
+    setShowStartSuggestions(false);
+    setError(null);
+  };
+
+  const selectEndSuggestion = (suggestion) => {
+    setEndAddress(suggestion.display_name);
+    setEndCoords(suggestion);
+    setShowEndSuggestions(false);
+    setError(null);
   };
 
   const handleUseVehicleLocation = async (vehicleId) => {
@@ -230,20 +249,33 @@ export default function Routing() {
           {/* Start Point */}
           <div className={styles.inputGroup}>
             <label htmlFor="startAddress">Start Point</label>
-            <input
-              id="startAddress"
-              type="text"
-              placeholder="Enter starting address"
-              value={startAddress}
-              onChange={handleStartAddressChange}
-              onBlur={handleStartAddressBlur}
-              className={styles.input}
-            />
+            <div className={styles.autoCompleteContainer}>
+              <input
+                id="startAddress"
+                type="text"
+                placeholder="Enter starting address"
+                value={startAddress}
+                onChange={handleStartAddressChange}
+                onFocus={() => showStartSuggestions && setShowStartSuggestions(true)}
+                className={styles.input}
+              />
+              {showStartSuggestions && startAddressSuggestions.length > 0 && (
+                <div className={styles.suggestionsList}>
+                  {startAddressSuggestions.map((suggestion, idx) => (
+                    <div
+                      key={idx}
+                      className={styles.suggestionItem}
+                      onClick={() => selectStartSuggestion(suggestion)}
+                    >
+                      <div className={styles.suggestionText}>{suggestion.display_name}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             {startCoords && (
               <div className={styles.geocodedInfo}>
-                ✓ {startCoords.address}
-                <br />
-                <small>({startCoords.latitude.toFixed(4)}, {startCoords.longitude.toFixed(4)})</small>
+                ✓ {startCoords.display_name || `${startCoords.latitude.toFixed(4)}, ${startCoords.longitude.toFixed(4)}`}
               </div>
             )}
 
@@ -268,20 +300,33 @@ export default function Routing() {
           {/* End Point */}
           <div className={styles.inputGroup}>
             <label htmlFor="endAddress">Destination</label>
-            <input
-              id="endAddress"
-              type="text"
-              placeholder="Enter destination address"
-              value={endAddress}
-              onChange={handleEndAddressChange}
-              onBlur={handleEndAddressBlur}
-              className={styles.input}
-            />
+            <div className={styles.autoCompleteContainer}>
+              <input
+                id="endAddress"
+                type="text"
+                placeholder="Enter destination address"
+                value={endAddress}
+                onChange={handleEndAddressChange}
+                onFocus={() => showEndSuggestions && setShowEndSuggestions(true)}
+                className={styles.input}
+              />
+              {showEndSuggestions && endAddressSuggestions.length > 0 && (
+                <div className={styles.suggestionsList}>
+                  {endAddressSuggestions.map((suggestion, idx) => (
+                    <div
+                      key={idx}
+                      className={styles.suggestionItem}
+                      onClick={() => selectEndSuggestion(suggestion)}
+                    >
+                      <div className={styles.suggestionText}>{suggestion.display_name}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             {endCoords && (
               <div className={styles.geocodedInfo}>
-                ✓ {endCoords.address}
-                <br />
-                <small>({endCoords.latitude.toFixed(4)}, {endCoords.longitude.toFixed(4)})</small>
+                ✓ {endCoords.display_name || `${endCoords.latitude.toFixed(4)}, ${endCoords.longitude.toFixed(4)}`}
               </div>
             )}
           </div>
@@ -432,6 +477,19 @@ export default function Routing() {
                 </div>
               </div>
             )}
+          </section>
+        )}
+
+        {/* Map Display */}
+        {routes && startCoords && endCoords && (
+          <section className={styles.mapSection}>
+            <h2>Route Map</h2>
+            <RouteMap
+              startCoords={startCoords}
+              endCoords={endCoords}
+              selectedRoute={selectedRoute}
+              routes={routes}
+            />
           </section>
         )}
 
