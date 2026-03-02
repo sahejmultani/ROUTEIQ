@@ -633,19 +633,20 @@ class HeatCluster(BaseModel):
 
 @app.get("/api/advanced_risk_analysis")
 def get_advanced_risk_analysis(
+    vehicle_id: Optional[str] = None,
     time_period_hours: int = 72,
     min_speed_change: float = 5.0
 ):
     """
     Advanced risk analysis with:
-    - Time filtering (analyze last N hours, default 3 days for demo)
-    - Sudden speed change detection (aggressive acceleration/braking)
-    - Speed limit analysis and speeding detection
-    - Route hazard identification
-    - Idle and safety pattern detection
+    - Vehicle filtering (optional)
+    - Time filtering
+    - Harsh braking and sharp turn detection
+    - Aggressive speeding/slow driving detection
     
     Args:
-        time_period_hours: Analyze data from last N hours (default 72 for demo)
+        vehicle_id: Filter to specific vehicle (optional, analyzes all if None)
+        time_period_hours: Analyze data from last N hours (default 72)
         min_speed_change: Minimum km/h change to flag as sudden (default 5)
     """
     try:
@@ -653,21 +654,25 @@ def get_advanced_risk_analysis(
         credentials = login_result["credentials"]
         session_id = credentials["sessionId"]
     except Exception as e:
-        return {"error": str(e), "alerts": [], "hotspots": [], "summary": {}}
+        return {"error": str(e), "alerts": [], "vehicle_id": vehicle_id, "summary": {}}
     
     from geotab_helpers import GEOTAB_BASE_URL
     import requests
     from datetime import datetime, timedelta
+    import math
     
     vehicles = fetch_vehicles(session_id, credentials)
-    cutoff_time = datetime.utcnow() - timedelta(hours=time_period_hours)
     
+    # Filter vehicles if specific ID provided
+    if vehicle_id:
+        vehicles = [v for v in vehicles if v.get("id") == vehicle_id]
+    
+    cutoff_time = datetime.utcnow() - timedelta(hours=time_period_hours)
     alerts = []
-    route_patterns = {}
     vehicle_speed_stats = {}
     
     for vehicle in vehicles[:50]:
-        vehicle_id = vehicle.get("id")
+        vehicle_id_val = vehicle.get("id")
         vehicle_name = vehicle.get("name", "Unknown")
         
         # Fetch comprehensive GPS history
@@ -676,7 +681,7 @@ def get_advanced_risk_analysis(
             "params": {
                 "typeName": "LogRecord",
                 "credentials": credentials,
-                "search": {"deviceSearch": {"id": vehicle_id}},
+                "search": {"deviceSearch": {"id": vehicle_id_val}},
                 "resultsLimit": 500,
                 "sortBy": "dateTime desc"
             },
@@ -691,13 +696,10 @@ def get_advanced_risk_analysis(
         except Exception:
             continue
         
-        # Sort chronologically (oldest first to analyze progression)
+        # Sort chronologically
         logrecords = sorted(logrecords, key=lambda x: x.get("dateTime", ""), reverse=False)
         
-        if not logrecords:
-            continue
-        
-        # Collect all valid records regardless of time (for demo)
+        # Collect valid records
         filtered_records = []
         for record in logrecords:
             try:
@@ -709,16 +711,16 @@ def get_advanced_risk_analysis(
         if len(filtered_records) < 2:
             continue
         
-        # Calculate statistics for this vehicle
+        # Calculate vehicle stats
         speeds = [r.get("speed", 0) for r in filtered_records]
-        vehicle_speed_stats[vehicle_id] = {
+        vehicle_speed_stats[vehicle_id_val] = {
             "min": min(speeds),
             "max": max(speeds),
             "avg": sum(speeds) / len(speeds),
             "records": len(filtered_records)
         }
         
-        # Analyze each consecutive pair of points
+        # Analyze consecutive points for incidents
         for i in range(1, len(filtered_records)):
             prev = filtered_records[i - 1]
             curr = filtered_records[i]
@@ -727,25 +729,33 @@ def get_advanced_risk_analysis(
             curr_speed = curr.get("speed", 0)
             speed_change = abs(curr_speed - prev_speed)
             
+            # Calculate time difference between records
+            try:
+                prev_time = datetime.fromisoformat(prev.get("dateTime", "").replace("Z", "+00:00"))
+                curr_time = datetime.fromisoformat(curr.get("dateTime", "").replace("Z", "+00:00"))
+                time_diff_seconds = (curr_time - prev_time).total_seconds()
+            except:
+                time_diff_seconds = None
+            
             lat = curr.get("latitude")
             lng = curr.get("longitude")
             timestamp = curr.get("dateTime", "")
             
-            # Get estimated speed limit for this area (using recent history)
+            # Calculate area speed limit
             area_start = max(0, i - 15)
             area_end = min(len(filtered_records), i + 15)
             area_speeds = [r.get("speed", 0) for r in filtered_records[area_start:area_end]]
             estimated_limit = estimate_speed_limit_v2(area_speeds)
             
-            # Alert 1: Speeding (> 15% over estimated limit)
-            if curr_speed > 5 and curr_speed > estimated_limit * 1.15:
+            # Alert 1: Aggressive Speeding (> 20% over limit)
+            if curr_speed > 5 and curr_speed > estimated_limit * 1.20:
                 excess = curr_speed - estimated_limit
-                if excess > 3:  # At least 3 km/h over
+                if excess > 5:
                     alerts.append({
-                        "vehicle_id": vehicle_id,
+                        "vehicle_id": vehicle_id_val,
                         "vehicle_name": vehicle_name,
-                        "alert_type": "Speeding",
-                        "severity": min(1.0, excess / 30.0),
+                        "alert_type": "Aggressive Speeding",
+                        "severity": min(1.0, excess / 40.0),
                         "timestamp": timestamp,
                         "location": {"latitude": lat, "longitude": lng},
                         "current_speed": round(curr_speed, 1),
@@ -753,97 +763,144 @@ def get_advanced_risk_analysis(
                         "excess_speed": round(excess, 1)
                     })
             
-            # Alert 2: Rapid acceleration/hard braking
-            if speed_change >= min_speed_change and speed_change > 0:
-                event_type = "Rapid Acceleration" if curr_speed > prev_speed else "Hard Braking"
-                severity = min(1.0, speed_change / 40.0)
-                
-                alerts.append({
-                    "vehicle_id": vehicle_id,
-                    "vehicle_name": vehicle_name,
-                    "alert_type": event_type,
-                    "severity": severity,
-                    "timestamp": timestamp,
-                    "location": {"latitude": lat, "longitude": lng},
-                    "speed_before": round(prev_speed, 1),
-                    "speed_after": round(curr_speed, 1),
-                    "speed_change": round(speed_change, 1)
-                })
+            # Alert 2: Going Too Slow (< 50% of estimated limit in non-traffic)
+            if estimated_limit > 60 and curr_speed > 0 and curr_speed < estimated_limit * 0.5:
+                deficit = estimated_limit - curr_speed
+                if deficit > 20:
+                    alerts.append({
+                        "vehicle_id": vehicle_id_val,
+                        "vehicle_name": vehicle_name,
+                        "alert_type": "Slow Driving",
+                        "severity": min(0.6, deficit / 50.0),
+                        "timestamp": timestamp,
+                        "location": {"latitude": lat, "longitude": lng},
+                        "current_speed": round(curr_speed, 1),
+                        "expected_speed": round(estimated_limit, 1),
+                        "deficit": round(deficit, 1)
+                    })
             
-            # Alert 3: Excessive idling (speed = 0 for multiple records)
-            if curr_speed == 0 and prev_speed > 0:
-                alerts.append({
-                    "vehicle_id": vehicle_id,
-                    "vehicle_name": vehicle_name,
-                    "alert_type": "Stop/Idle",
-                    "severity": 0.15,
-                    "timestamp": timestamp,
-                    "location": {"latitude": lat, "longitude": lng}
-                })
+            # Alert 3: Harsh Braking - consider time taken to stop
+            # Factor in acceleration: km/h per second
+            if curr_speed < prev_speed and speed_change >= 5:
+                acceleration = speed_change / time_diff_seconds if time_diff_seconds and time_diff_seconds > 0 else 0
+                
+                # Flag harsh braking if:
+                # - Speed drop > 15 km/h, OR
+                # - Speed drop > 5 km/h but happening in < 2 seconds (fast deceleration)
+                is_harsh = (speed_change >= 15) or (speed_change >= 5 and acceleration >= 5)
+                
+                if is_harsh:
+                    # Severity based on deceleration rate and magnitude
+                    time_factor = min(1.0, 2.0 / time_diff_seconds) if time_diff_seconds and time_diff_seconds > 0 else 0.5
+                    severity = min(1.0, (speed_change / 60.0) * time_factor)
+                    
+                    alerts.append({
+                        "vehicle_id": vehicle_id_val,
+                        "vehicle_name": vehicle_name,
+                        "alert_type": "Harsh Braking",
+                        "severity": severity,
+                        "timestamp": timestamp,
+                        "location": {"latitude": lat, "longitude": lng},
+                        "speed_before": round(prev_speed, 1),
+                        "speed_after": round(curr_speed, 1),
+                        "speed_change": round(speed_change, 1),
+                        "time_taken": round(time_diff_seconds, 2) if time_diff_seconds else None,
+                        "deceleration_rate": round(acceleration, 2)
+                    })
+            
+            # Alert 4: Rapid Acceleration - consider time taken to accelerate
+            if curr_speed > prev_speed and speed_change >= 5:
+                acceleration = speed_change / time_diff_seconds if time_diff_seconds and time_diff_seconds > 0 else 0
+                
+                # Flag rapid acceleration if:
+                # - Speed gain > 15 km/h, OR
+                # - Speed gain > 5 km/h but happening in < 2 seconds (fast acceleration)
+                is_rapid = (speed_change >= 15) or (speed_change >= 5 and acceleration >= 5)
+                
+                if is_rapid:
+                    # Severity based on acceleration rate and magnitude
+                    time_factor = min(1.0, 2.0 / time_diff_seconds) if time_diff_seconds and time_diff_seconds > 0 else 0.5
+                    severity = min(1.0, (speed_change / 60.0) * time_factor)
+                    
+                    alerts.append({
+                        "vehicle_id": vehicle_id_val,
+                        "vehicle_name": vehicle_name,
+                        "alert_type": "Rapid Acceleration",
+                        "severity": severity,
+                        "timestamp": timestamp,
+                        "location": {"latitude": lat, "longitude": lng},
+                        "speed_before": round(prev_speed, 1),
+                        "speed_after": round(curr_speed, 1),
+                        "speed_change": round(speed_change, 1),
+                        "time_taken": round(time_diff_seconds, 2) if time_diff_seconds else None,
+                        "acceleration_rate": round(acceleration, 2)
+                    })
         
-        # Track route patterns
-        if filtered_records:
-            # Group by approximate location (0.05 degree grid ~5km)
-            for record in filtered_records:
-                lat = record.get("latitude")
-                lng = record.get("longitude")
-                if lat and lng:
-                    route_key = f"{round(lat, 2)},{round(lng, 2)}"
-                    if route_key not in route_patterns:
-                        route_patterns[route_key] = {
-                            "vehicles": set(),
-                            "alert_count": 0,
-                            "total_passes": 0,
-                            "avg_speed": []
-                        }
-                    route_patterns[route_key]["vehicles"].add(vehicle_id)
-                    route_patterns[route_key]["total_passes"] += 1
-                    route_patterns[route_key]["avg_speed"].append(record.get("speed", 0))
+        # Detect sharp turns (angle > 60 degrees between consecutive segments)
+        for i in range(2, len(filtered_records)):
+            prev_prev = filtered_records[i - 2]
+            prev = filtered_records[i - 1]
+            curr = filtered_records[i]
+            
+            lat1, lng1 = prev_prev.get("latitude"), prev_prev.get("longitude")
+            lat2, lng2 = prev.get("latitude"), prev.get("longitude")
+            lat3, lng3 = curr.get("latitude"), curr.get("longitude")
+            
+            if all([lat1, lng1, lat2, lng2, lat3, lng3]):
+                # Calculate bearing angles
+                angle1 = calculate_bearing(lat1, lng1, lat2, lng2)
+                angle2 = calculate_bearing(lat2, lng2, lat3, lng3)
+                
+                # Calculate turn angle
+                turn_angle = abs(angle2 - angle1)
+                if turn_angle > 180:
+                    turn_angle = 360 - turn_angle
+                
+                # Flag sharp turns (> 60 degrees) at higher speeds
+                if turn_angle > 60:
+                    speed = curr.get("speed", 0)
+                    if speed > 30:  # Only flag if moving at reasonable speed
+                        severity = min(1.0, (turn_angle - 60) / 120.0 * (speed / 100.0))
+                        alerts.append({
+                            "vehicle_id": vehicle_id_val,
+                            "vehicle_name": vehicle_name,
+                            "alert_type": "Sharp Turn",
+                            "severity": severity,
+                            "timestamp": curr.get("dateTime", ""),
+                            "location": {"latitude": lat3, "longitude": lng3},
+                            "turn_angle": round(turn_angle, 1),
+                            "speed_during_turn": round(speed, 1)
+                        })
     
-    # Count alerts by vehicle and route
-    for alert in alerts:
-        vehicle_id = alert.get("vehicle_id")
-        if alert.get("location"):
-            lat = alert["location"]["latitude"]
-            lng = alert["location"]["longitude"]
-            route_key = f"{round(lat, 2)},{round(lng, 2)}"
-            if route_key in route_patterns:
-                route_patterns[route_key]["alert_count"] += 1
-    
-    # Sort alerts by severity
+    # Sort by severity
     alerts.sort(key=lambda x: x.get("severity", 0), reverse=True)
     
-    # Build hotspots list
-    hotspots = []
-    for route_key, data in route_patterns.items():
-        if data["alert_count"] > 0 or len(data["vehicles"]) > 2:
-            avg_sp = sum(data["avg_speed"]) / len(data["avg_speed"]) if data["avg_speed"] else 0
-            hotspots.append({
-                "location": route_key,
-                "vehicles_affected": len(data["vehicles"]),
-                "alert_count": data["alert_count"],
-                "passes": data["total_passes"],
-                "avg_speed": round(avg_sp, 1),
-                "risk_level": "High" if data["alert_count"] > 10 else "Medium" if data["alert_count"] > 3 else "Low"
-            })
-    
-    hotspots.sort(key=lambda x: x["alert_count"], reverse=True)
-    
     return {
-        "alerts": alerts[:150],
-        "hotspots": hotspots[:20],
+        "alerts": alerts[:200],
+        "vehicle_id": vehicle_id,
         "vehicle_stats": vehicle_speed_stats,
         "summary": {
             "time_period_hours": time_period_hours,
             "total_alerts": len(alerts),
-            "speeding_alerts": sum(1 for a in alerts if a["alert_type"] == "Speeding"),
+            "aggressive_speeding": sum(1 for a in alerts if a["alert_type"] == "Aggressive Speeding"),
+            "slow_driving": sum(1 for a in alerts if a["alert_type"] == "Slow Driving"),
+            "harsh_braking": sum(1 for a in alerts if a["alert_type"] == "Harsh Braking"),
             "rapid_acceleration": sum(1 for a in alerts if a["alert_type"] == "Rapid Acceleration"),
-            "hard_braking": sum(1 for a in alerts if a["alert_type"] == "Hard Braking"),
-            "stop_idle": sum(1 for a in alerts if a["alert_type"] == "Stop/Idle"),
-            "alert_hotspots": len(hotspots),
+            "sharp_turns": sum(1 for a in alerts if a["alert_type"] == "Sharp Turn"),
             "min_speed_change_threshold": min_speed_change,
         }
     }
+
+
+def calculate_bearing(lat1, lng1, lat2, lng2):
+    """Calculate bearing between two GPS points."""
+    import math
+    lat1, lng1, lat2, lng2 = map(math.radians, [lat1, lng1, lat2, lng2])
+    dlng = lng2 - lng1
+    x = math.sin(dlng) * math.cos(lat2)
+    y = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dlng)
+    bearing = math.degrees(math.atan2(x, y))
+    return (bearing + 360) % 360
 
 
 def estimate_speed_limit_v2(area_speeds):
