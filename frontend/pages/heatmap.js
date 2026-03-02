@@ -6,8 +6,7 @@ import Navbar from '../components/Navbar';
 import Link from 'next/link';
 import styles from '../styles/routing.module.css';
 
-const Map = dynamic(() => import('../components/HeatMap'), { ssr: false });
-const RouteMap = dynamic(() => import('../components/RouteMap'), {
+const CombinedHeatmapRoute = dynamic(() => import('../components/CombinedHeatmapRoute'), {
   ssr: false,
   loading: () => <div className={styles.mapLoading}>Loading map...</div>,
 });
@@ -30,7 +29,6 @@ export default function HeatmapPage() {
   const [routeRisks, setRouteRisks] = useState({});
   const [vehicles, setVehicles] = useState([]);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
-  const [showRouting, setShowRouting] = useState(false);
 
   useEffect(() => {
     fetchVehicles();
@@ -154,7 +152,6 @@ export default function HeatmapPage() {
         return;
       }
       setRoutes(data);
-      setShowRouting(true);
       const risks = {};
       risks.fastest = await calculateRiskScore('fastest');
       risks.safe = await calculateRiskScore('safe');
@@ -369,22 +366,14 @@ export default function HeatmapPage() {
             )}
           </section>
 
-          {/* Right Panel - Map */}
-          <div>
-            {showRouting && routes && startCoords && endCoords ? (
-              <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid #ddd', background: 'white' }}>
-                <RouteMap
-                  startCoords={startCoords}
-                  endCoords={endCoords}
-                  selectedRoute={selectedRoute}
-                  routes={routes}
-                />
-              </div>
-            ) : (
-              <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid #ddd' }}>
-                <Map />
-              </div>
-            )}
+          {/* Right Panel - Combined Map */}
+          <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid #ddd', background: 'white' }}>
+            <CombinedHeatmapRoute
+              routes={routes}
+              selectedRoute={selectedRoute}
+              startCoords={startCoords}
+              endCoords={endCoords}
+            />
           </div>
         </div>
       </main>
