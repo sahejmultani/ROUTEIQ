@@ -1,0 +1,416 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.header {
+  background: rgba(0, 0, 0, 0.2);
+  color: white;
+  padding: 2rem;
+  text-align: center;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.header h1 {
+  margin: 0 0 0.5rem 0;
+  font-size: 2.5rem;
+  font-weight: 700;
+}
+
+.header p {
+  margin: 0.5rem 0 1rem 0;
+  font-size: 1rem;
+  opacity: 0.9;
+}
+
+.nav {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.nav a {
+  color: white;
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.nav a:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.content {
+  flex: 1;
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+@media (max-width: 1024px) {
+  .content {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Input Panel */
+.inputPanel {
+  background: white;
+  padding: 2rem;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  height: fit-content;
+}
+
+.inputPanel h2 {
+  margin-top: 0;
+  color: #333;
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.inputGroup {
+  margin-bottom: 1.5rem;
+}
+
+.inputGroup label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #555;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-size: 0.95rem;
+  transition: border-color 0.3s ease;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.geocodedInfo {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: #f0f8ff;
+  border-left: 3px solid #4CAF50;
+  color: #333;
+  font-size: 0.9rem;
+  border-radius: 3px;
+}
+
+.geocodedInfo small {
+  display: block;
+  color: #888;
+  margin-top: 0.25rem;
+}
+
+/* Vehicle Selector */
+.vehicleSelector {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+}
+
+.vehicleSelector label {
+  display: block;
+  margin-bottom: 0.75rem;
+  color: #555;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.vehicleGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
+.vehicleButton {
+  padding: 0.5rem 1rem;
+  border: 1px solid #ddd;
+  background: white;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+  color: #555;
+  font-weight: 500;
+}
+
+.vehicleButton:hover {
+  border-color: #667eea;
+  background: #f5f5ff;
+}
+
+.vehicleButton.active {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
+}
+
+/* Error Message */
+.error {
+  background: #ffebee;
+  border-left: 3px solid #F44336;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  color: #d32f2f;
+  border-radius: 3px;
+  font-size: 0.9rem;
+}
+
+/* Calculate Button */
+.calculateButton {
+  width: 100%;
+  padding: 0.875rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 5px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 1rem;
+}
+
+.calculateButton:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+}
+
+.calculateButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Route Comparison */
+.routeComparison {
+  grid-column: 1 / -1;
+  background: white;
+  padding: 2rem;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.routeComparison h2 {
+  margin-top: 0;
+  color: #333;
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.routeOptions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+@media (max-width: 768px) {
+  .routeOptions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Route Card */
+.routeCard {
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: white;
+}
+
+.routeCard:hover {
+  border-color: #667eea;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+}
+
+.routeCard.selected {
+  border-color: #667eea;
+  background: #f5f5ff;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.routeTitle h3 {
+  margin: 0 0 1rem 0;
+  color: #333;
+  font-size: 1.25rem;
+}
+
+.routeMetrics {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #eee;
+}
+
+.metric {
+  flex: 1;
+}
+
+.metric .label {
+  display: block;
+  color: #888;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.metric .value {
+  display: block;
+  color: #333;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+/* Risk Score */
+.riskScore {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #f9f9f9;
+  border-radius: 5px;
+}
+
+.riskBar {
+  display: block;
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+  transition: width 0.3s ease;
+}
+
+.riskLabel {
+  display: block;
+  color: #555;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.routeDetails {
+  margin: 1rem 0;
+  color: #666;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.selectButton {
+  width: 100%;
+  padding: 0.75rem;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #555;
+  transition: all 0.3s ease;
+  font-size: 0.95rem;
+}
+
+.selectButton:hover {
+  background: #e8e8e8;
+  border-color: #999;
+}
+
+.routeCard.selected .selectButton {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
+}
+
+/* Selected Route Info */
+.selectedRouteInfo {
+  background: #f0f8ff;
+  border: 1px solid #667eea;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.selectedRouteInfo h3 {
+  margin-top: 0;
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.selectedRouteInfo p {
+  color: #666;
+  margin-bottom: 1rem;
+}
+
+.routeStats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.routeStats > div {
+  background: white;
+  padding: 0.75rem;
+  border-radius: 5px;
+  color: #333;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+/* Instructions */
+.instructions {
+  background: white;
+  padding: 2rem;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  grid-column: 1 / -1;
+}
+
+.instructions h2 {
+  margin-top: 0;
+  color: #333;
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.instructions ol {
+  color: #666;
+  padding-left: 1.5rem;
+  line-height: 1.8;
+}
+
+.instructions li {
+  margin-bottom: 0.75rem;
+}
+
+.instructions p {
+  color: #666;
+  line-height: 1.6;
+  margin: 1rem 0 0 0;
+}
+
+.instructions strong {
+  color: #333;
+  font-weight: 600;
+}

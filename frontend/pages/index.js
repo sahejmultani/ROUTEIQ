@@ -62,6 +62,7 @@ export default function Landing() {
           <div style={{ display: 'flex', gap: 18 }}>
             <a href="/heatmap" style={buttonStyle}>View Heat Map</a>
             <a href="/fleet" style={{ ...buttonStyle, background: '#fff', color: '#222', border: '1.5px solid #222', fontWeight: 600 }}>Fleet & Vehicle Info</a>
+            <a href="/routing" style={{ ...buttonStyle, background: '#f39c12', fontWeight: 600 }}>Route Planner</a>
           </div>
         </div>
       </div>
