@@ -1,11 +1,55 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
+const getIntersectionFromCoordinates = async (lat, lng, cache = {}) => {
+  const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  if (cache[key]) {
+    return cache[key];
+  }
+
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18`
+    );
+    const data = await response.json();
+    const address = data.address || {};
+    
+    // Try to construct intersection
+    let intersection = null;
+    
+    // Check for explicit road intersection
+    if (address.road) {
+      // Look for nearby features that could indicate an intersection
+      if (address.neighbourhood) {
+        intersection = `${address.road} & ${address.neighbourhood}`;
+      } else if (address.suburb) {
+        intersection = `${address.road} area`;
+      } else {
+        intersection = address.road;
+      }
+    } else if (address.street) {
+      intersection = address.street;
+    } else if (address.city) {
+      intersection = address.city;
+    } else {
+      intersection = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    }
+    
+    cache[key] = intersection;
+    return intersection;
+  } catch (error) {
+    return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  }
+};
+
 export default function RiskAnalysis() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [timePeriod, setTimePeriod] = useState(72);
   const [minSpeedChange, setMinSpeedChange] = useState(5);
+  const [addressCache, setAddressCache] = useState({});
+  const [alertAddresses, setAlertAddresses] = useState({});
+  const [hotspotsAddresses, setHotspotsAddresses] = useState({});
 
   const fetchAnalysis = async (hours, speedChange) => {
     setLoading(true);
@@ -15,6 +59,31 @@ export default function RiskAnalysis() {
       );
       const result = await response.json();
       setData(result);
+
+      // Fetch intersections for alerts
+      if (result.alerts) {
+        const newAlertAddresses = {};
+        for (let i = 0; i < Math.min(result.alerts.length, 20); i++) {
+          const alert = result.alerts[i];
+          if (alert.location) {
+            const addr = await getIntersectionFromCoordinates(alert.location.latitude, alert.location.longitude, addressCache);
+            newAlertAddresses[i] = addr;
+          }
+        }
+        setAlertAddresses(newAlertAddresses);
+      }
+
+      // Fetch intersections for hotspots
+      if (result.hotspots) {
+        const newHotspotsAddresses = {};
+        for (let i = 0; i < Math.min(result.hotspots.length, 9); i++) {
+          const hotspot = result.hotspots[i];
+          const [lat, lng] = hotspot.location.split(',').map(parseFloat);
+          const addr = await getIntersectionFromCoordinates(lat, lng, addressCache);
+          newHotspotsAddresses[i] = addr;
+        }
+        setHotspotsAddresses(newHotspotsAddresses);
+      }
     } catch (error) {
       console.error('Failed to fetch analysis:', error);
     } finally {
@@ -174,8 +243,8 @@ export default function RiskAnalysis() {
                           {alert.alert_type}
                         </span>
                       </td>
-                      <td style={{ padding: '10px', color: '#666', fontSize: '12px' }}>
-                        {alert.location.latitude.toFixed(3)}, {alert.location.longitude.toFixed(3)}
+                      <td style={{ padding: '10px', color: '#666', fontSize: '12px', maxWidth: '200px' }}>
+                        {alertAddresses[idx] || `${alert.location.latitude.toFixed(3)}, ${alert.location.longitude.toFixed(3)}`}
                       </td>
                       <td style={{ padding: '10px', color: '#333' }}>
                         {alert.alert_type === 'Speeding' && `${alert.excess_speed}km/h over`}
@@ -223,7 +292,7 @@ export default function RiskAnalysis() {
                   </div>
                   <div style={{ marginBottom: '12px' }}>
                     <div style={{ fontSize: '13px', fontWeight: 600, color: '#333', marginBottom: '4px' }}>
-                      📍 {hotspot.location}
+                      📍 {hotspotsAddresses[idx] || hotspot.location}
                     </div>
                     <div style={{ fontSize: '11px', color: '#666' }}>
                       Avg Speed: <strong>{hotspot.avg_speed} km/h</strong>
