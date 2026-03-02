@@ -102,13 +102,14 @@ def get_vehicle_data(vehicle_id: str):
     device_raw = device_resp.json()
     device_info = device_raw.get("result", [{}])[0] if device_raw.get("result") else {}
 
-    # Fetch all status data for this device
+    # Fetch all status data for this device (limited to 100 for performance)
     status_payload = {
         "method": "Get",
         "params": {
             "typeName": "StatusData",
             "credentials": credentials,
-            "search": {"deviceSearch": {"id": vehicle_id}}
+            "search": {"deviceSearch": {"id": vehicle_id}},
+            "resultsLimit": 100
         },
         "id": 2,
         "jsonrpc": "2.0",
@@ -119,14 +120,14 @@ def get_vehicle_data(vehicle_id: str):
     status_raw = status_resp.json()
     status_data = status_raw.get("result", [])
 
-    # Fetch latest LogRecord for this device for accurate last position
+    # Fetch latest LogRecord for this device for accurate last position (limited to 100 for performance)
     logrecord_payload = {
         "method": "Get",
         "params": {
             "typeName": "LogRecord",
             "credentials": credentials,
             "search": {"deviceSearch": {"id": vehicle_id}},
-            "resultsLimit": 500,
+            "resultsLimit": 100,
             "sortBy": "dateTime desc"
         },
         "id": 3,
@@ -524,6 +525,98 @@ def get_vehicle_data(vehicle_id: str):
             "due_diag_sample": due_diagnostics_data[0] if due_diagnostics_data else None,
         }
     }
+
+# Endpoint to get all vehicle locations for map display
+@app.get("/api/vehicle_locations")
+async def get_vehicle_locations():
+    try:
+        login_result = geotab_login()
+        credentials = login_result["credentials"]
+        session_id = credentials["sessionId"]
+    except Exception as e:
+        print(f"Geotab login failed: {e}")
+        return []
+    
+    from geotab_helpers import GEOTAB_BASE_URL
+    import httpx
+    import asyncio
+    from datetime import datetime, timedelta
+    
+    # Fetch all devices
+    try:
+        vehicles = fetch_vehicles(session_id, credentials)
+    except Exception as e:
+        print(f"Geotab fetch vehicles failed: {e}")
+        return []
+    
+    # Only show vehicles active in the last 24 hours
+    cutoff_time = datetime.utcnow() - timedelta(hours=24)
+    
+    # Function to fetch location for a single vehicle
+    async def fetch_vehicle_location(client, vehicle):
+        vehicle_id = vehicle.get("id")
+        vehicle_name = vehicle.get("name")
+        
+        logrecord_payload = {
+            "method": "Get",
+            "params": {
+                "typeName": "LogRecord",
+                "credentials": credentials,
+                "search": {"deviceSearch": {"id": vehicle_id}},
+                "resultsLimit": 1,
+                "sortBy": "dateTime desc"
+            },
+            "id": 1,
+            "jsonrpc": "2.0",
+            "sessionId": session_id
+        }
+        try:
+            response = await client.post(GEOTAB_BASE_URL, json=logrecord_payload, timeout=10.0)
+            response.raise_for_status()
+            logrecord_raw = response.json()
+            logrecord_data = logrecord_raw.get("result", [])
+            
+            if logrecord_data and len(logrecord_data) > 0:
+                log = logrecord_data[0]
+                latitude = log.get("latitude")
+                longitude = log.get("longitude")
+                speed = log.get("speed")
+                dateTime = log.get("dateTime")
+                
+                # Only include if vehicle was active in last 24 hours
+                if dateTime:
+                    try:
+                        log_time = datetime.fromisoformat(dateTime.replace("Z", "+00:00"))
+                        if log_time < cutoff_time:
+                            return None  # Skip vehicles inactive for more than 24 hours
+                    except Exception:
+                        pass
+                
+                if latitude is not None and longitude is not None:
+                    return {
+                        "id": vehicle_id,
+                        "name": vehicle_name,
+                        "latitude": latitude,
+                        "longitude": longitude,
+                        "speed": speed,
+                        "dateTime": dateTime,
+                        "vin": vehicle.get("vehicleIdentificationNumber"),
+                        "licensePlate": vehicle.get("licensePlate")
+                    }
+        except Exception as e:
+            print(f"Failed to fetch location for vehicle {vehicle_id}: {e}")
+        
+        return None
+    
+    # Make concurrent requests for all vehicles
+    async with httpx.AsyncClient() as client:
+        tasks = [fetch_vehicle_location(client, v) for v in vehicles]
+        results = await asyncio.gather(*tasks, return_exceptions=False)
+    
+    # Filter out None results
+    vehicle_locations = [v for v in results if v is not None]
+    
+    return vehicle_locations
 
 class HeatCluster(BaseModel):
     id: str
