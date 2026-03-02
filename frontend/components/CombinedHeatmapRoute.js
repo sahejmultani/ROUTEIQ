@@ -187,6 +187,21 @@ export default function CombinedHeatmapRoute({ routes, selectedRoute, startCoord
     }
   }, [routes, startCoords, endCoords]);
 
+  // Group vehicles by location
+  const vehiclesByLocation = vehicles.reduce((acc, v) => {
+    const key = `${v.latitude.toFixed(4)},${v.longitude.toFixed(4)}`;
+    if (!acc[key]) {
+      acc[key] = {
+        location: [v.latitude, v.longitude],
+        vehicles: []
+      };
+    }
+    acc[key].vehicles.push(v);
+    return acc;
+  }, {});
+
+  const vehicleLocations = Object.values(vehiclesByLocation);
+
   return (
     <MapContainer
       center={center}
@@ -282,24 +297,57 @@ export default function CombinedHeatmapRoute({ routes, selectedRoute, startCoord
         </div>
       )}
 
-      {/* Vehicle Locations */}
-      {vehicles.map((vehicle, idx) => (
-        <Marker
-          key={idx}
-          position={[vehicle.latitude, vehicle.longitude]}
-          icon={vehicleIcon}
-        >
-          <Popup>
-            <div style={{ fontSize: '13px' }}>
-              <strong>{vehicle.name}</strong>
-              <br />
-              Speed: {vehicle.speed} km/h
-              <br />
-              <small>{vehicle.speed_status}</small>
-            </div>
-          </Popup>
-        </Marker>
-      ))}
+      {/* Vehicle Locations - Grouped by Location */}
+      {vehicleLocations.map((group, idx) => {
+        // If single vehicle, use car icon; if multiple, use numbered cluster icon
+        const icon = group.vehicles.length === 1 ? vehicleIcon : L.icon({
+          iconUrl: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="40" height="40"><circle cx="16" cy="16" r="15" fill="%233498db" stroke="%23fff" stroke-width="2"/><text x="16" y="21" font-size="14" font-weight="bold" fill="%23fff" text-anchor="middle">${group.vehicles.length}</text></svg>`,
+          iconSize: [40, 40],
+          iconAnchor: [20, 20],
+          popupAnchor: [0, -20],
+        });
+
+        return (
+          <Marker
+            key={`vehicle-group-${idx}`}
+            position={group.location}
+            icon={icon}
+          >
+            <Popup>
+              <div style={{
+                minWidth: 280,
+                background: '#fff',
+                borderRadius: 12,
+                boxShadow: '0 2px 8px #eee',
+                padding: 12,
+                color: '#222',
+                fontFamily: 'Inter, Arial, sans-serif',
+                maxHeight: 400,
+                overflowY: 'auto',
+              }}>
+                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12, color: '#3498db' }}>
+                  🚗 {group.vehicles.length} Vehicle{group.vehicles.length > 1 ? 's' : ''} at this location
+                </div>
+                {group.vehicles.map((v) => (
+                  <div key={v.id} style={{ 
+                    marginBottom: 10, 
+                    paddingBottom: 10, 
+                    borderBottom: '1px solid #eee',
+                    fontSize: 13,
+                  }}>
+                    <div style={{ fontWeight: 600, color: '#3498db', marginBottom: 4 }}>{v.name}</div>
+                    <div><b>License Plate:</b> {v.licensePlate || 'N/A'}</div>
+                    <div><b>Speed:</b> {v.speed !== null ? `${v.speed} km/h` : 'N/A'}</div>
+                    <div style={{ fontSize: 12, color: '#666' }}>
+                      {v.dateTime ? new Date(v.dateTime).toLocaleString() : 'N/A'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Popup>
+          </Marker>
+        );
+      })}
 
       {/* Routes - Only when available */}
       {routes && selectedRoute && startCoords && endCoords && (

@@ -73,8 +73,8 @@ export default function HeatmapPage() {
   const handleStartAddressChange = async (e) => {
     const value = e.target.value;
     setStartAddress(value);
-    if (value.length > 1) {
-      const suggestions = await getAddressSuggestions(value);
+    if (value.length > 0) {
+      const suggestions = await getAddressSuggestionsWithVehicles(value);
       setStartAddressSuggestions(suggestions);
       setShowStartSuggestions(suggestions.length > 0);
     } else {
@@ -85,8 +85,8 @@ export default function HeatmapPage() {
   const handleEndAddressChange = async (e) => {
     const value = e.target.value;
     setEndAddress(value);
-    if (value.length > 1) {
-      const suggestions = await getAddressSuggestions(value);
+    if (value.length > 0) {
+      const suggestions = await getAddressSuggestionsWithVehicles(value);
       setEndAddressSuggestions(suggestions);
       setShowEndSuggestions(suggestions.length > 0);
     } else {
@@ -95,15 +95,76 @@ export default function HeatmapPage() {
   };
 
   const selectStartSuggestion = (suggestion) => {
-    setStartAddress(suggestion.display_name);
-    setStartCoords(suggestion);
+    if (suggestion.type === 'vehicle') {
+      setSelectedVehicle(suggestion.id);
+      handleUseVehicleLocation(suggestion.id);
+      setStartAddress(suggestion.display_name);
+    } else {
+      setStartAddress(suggestion.display_name);
+      setStartCoords(suggestion);
+    }
     setShowStartSuggestions(false);
   };
 
   const selectEndSuggestion = (suggestion) => {
-    setEndAddress(suggestion.display_name);
-    setEndCoords(suggestion);
+    if (suggestion.type === 'vehicle') {
+      setEndAddress(suggestion.display_name);
+      setEndCoords({
+        latitude: suggestion.vehicle.latitude,
+        longitude: suggestion.vehicle.longitude,
+        display_name: suggestion.display_name
+      });
+    } else {
+      setEndAddress(suggestion.display_name);
+      setEndCoords(suggestion);
+    }
     setShowEndSuggestions(false);
+  };
+
+  const getAddressSuggestionsWithVehicles = async (query) => {
+    if (!query || query.length < 1) return [];
+    
+    const results = [];
+    const queryLower = query.toLowerCase();
+    
+    // Add vehicle matches
+    const vehicleMatches = vehicles.filter(v => 
+      v.name.toLowerCase().includes(queryLower) || 
+      (v.licensePlate && v.licensePlate.toLowerCase().includes(queryLower))
+    );
+    vehicleMatches.forEach(v => {
+      results.push({
+        type: 'vehicle',
+        id: v.id,
+        display_name: `🚗 ${v.name}${v.licensePlate ? ` (${v.licensePlate})` : ''}`,
+        vehicle: v
+      });
+    });
+    
+    // Add address matches (only if more than 2 chars for API call)
+    if (query.length > 2) {
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`,
+          { headers: { 'User-Agent': 'RouteIQ/1.0' } }
+        );
+        if (response.ok) {
+          const data = await response.json();
+          data.forEach(item => {
+            results.push({
+              type: 'address',
+              display_name: item.display_name,
+              latitude: parseFloat(item.lat),
+              longitude: parseFloat(item.lon),
+            });
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching address suggestions:', err);
+      }
+    }
+    
+    return results;
   };
 
   const handleUseVehicleLocation = async (vehicleId) => {
@@ -233,8 +294,19 @@ export default function HeatmapPage() {
                         key={idx}
                         className={styles.suggestionItem}
                         onClick={() => selectStartSuggestion(suggestion)}
+                        style={{ 
+                          backgroundColor: suggestion.type === 'vehicle' ? '#e3f2fd' : 'transparent',
+                          borderLeft: suggestion.type === 'vehicle' ? '3px solid #3498db' : 'none',
+                          paddingLeft: suggestion.type === 'vehicle' ? '12px' : '0'
+                        }}
                       >
-                        <div className={styles.suggestionText}>{suggestion.display_name}</div>
+                        <div className={styles.suggestionText}>
+                          {suggestion.type === 'vehicle' ? (
+                            <span style={{ fontWeight: '500' }}>{suggestion.display_name}</span>
+                          ) : (
+                            suggestion.display_name
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -245,23 +317,7 @@ export default function HeatmapPage() {
                   ✓ {startCoords.display_name || `${startCoords.latitude.toFixed(4)}, ${startCoords.longitude.toFixed(4)}`}
                 </div>
               )}
-              {vehicles.length > 0 && (
-                <div className={styles.vehicleSelector}>
-                  <label>Or select vehicle:</label>
-                  <div className={styles.vehicleGrid}>
-                    {vehicles.slice(0, 3).map(vehicle => (
-                      <button
-                        key={vehicle.id}
-                        className={`${styles.vehicleButton} ${selectedVehicle === vehicle.id ? styles.active : ''}`}
-                        onClick={() => handleUseVehicleLocation(vehicle.id)}
-                        style={{ fontSize: '12px' }}
-                      >
-                        {vehicle.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+
             </div>
 
             {/* End Point */}
@@ -284,8 +340,19 @@ export default function HeatmapPage() {
                         key={idx}
                         className={styles.suggestionItem}
                         onClick={() => selectEndSuggestion(suggestion)}
+                        style={{ 
+                          backgroundColor: suggestion.type === 'vehicle' ? '#e3f2fd' : 'transparent',
+                          borderLeft: suggestion.type === 'vehicle' ? '3px solid #3498db' : 'none',
+                          paddingLeft: suggestion.type === 'vehicle' ? '12px' : '0'
+                        }}
                       >
-                        <div className={styles.suggestionText}>{suggestion.display_name}</div>
+                        <div className={styles.suggestionText}>
+                          {suggestion.type === 'vehicle' ? (
+                            <span style={{ fontWeight: '500' }}>{suggestion.display_name}</span>
+                          ) : (
+                            suggestion.display_name
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
