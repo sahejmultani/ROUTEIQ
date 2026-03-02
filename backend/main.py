@@ -1453,49 +1453,136 @@ async def calculate_route(
             # Get fastest route with alternatives
             coords_str = f"{start_lng},{start_lat};{end_lng},{end_lat}"
             fastest_url = f"{osrm_url}/{coords_str}"
-            
             fastest_resp = await client.get(
                 fastest_url,
                 params={
                     "overview": "full",
                     "geometries": "geojson",
-                    "alternatives": "true"  # Request alternative routes
+                    "alternatives": "true"
                 },
                 timeout=10.0
             )
             fastest_resp.raise_for_status()
             fastest_data = fastest_resp.json()
-            
             if fastest_data.get("code") != "Ok" or not fastest_data.get("routes"):
                 return {"error": "Route calculation failed", "code": fastest_data.get("code")}
-            
-            # Extract fastest route (first result from OSRM)
+
+            # Fetch incident markers (reuse logic from get_incident_locations)
+            try:
+                login_result = geotab_login()
+                credentials = login_result["credentials"]
+                session_id = credentials["sessionId"]
+            except Exception as e:
+                incident_alerts = []
+            else:
+                from geotab_helpers import GEOTAB_BASE_URL
+                import requests
+                vehicles = fetch_vehicles(session_id, credentials)
+                alerts = []
+                for vehicle in vehicles[:50]:
+                    vehicle_id_val = vehicle.get("id")
+                    logrecord_payload = {
+                        "method": "Get",
+                        "params": {
+                            "typeName": "LogRecord",
+                            "credentials": credentials,
+                            "search": {"deviceSearch": {"id": vehicle_id_val}},
+                            "resultsLimit": 500,
+                            "sortBy": "dateTime desc"
+                        },
+                        "id": 1,
+                        "jsonrpc": "2.0",
+                        "sessionId": session_id
+                    }
+                    try:
+                        resp = requests.post(GEOTAB_BASE_URL, json=logrecord_payload, timeout=10)
+                        logrecords = resp.json().get("result", [])
+                    except Exception:
+                        continue
+                    logrecords = sorted(logrecords, key=lambda x: x.get("dateTime", ""), reverse=False)
+                    filtered_records = []
+                    for record in logrecords:
+                        try:
+                            if record.get("latitude") and record.get("longitude") and record.get("speed") is not None:
+                                filtered_records.append(record)
+                        except:
+                            pass
+                    if len(filtered_records) < 2:
+                        continue
+                    for i in range(1, len(filtered_records)):
+                        prev = filtered_records[i - 1]
+                        curr = filtered_records[i]
+                        curr_speed = curr.get("speed", 0)
+                        prev_speed = prev.get("speed", 0)
+                        speed_change = abs(curr_speed - prev_speed)
+                        lat = curr.get("latitude")
+                        lng = curr.get("longitude")
+                        is_incident = False
+                        if curr_speed > 80:
+                            is_incident = True
+                        elif speed_change >= 15:
+                            is_incident = True
+                        if is_incident:
+                            alerts.append({
+                                "latitude": lat,
+                                "longitude": lng
+                            })
+                incident_alerts = alerts
+
+            # Helper: Haversine distance
+            import math
+            def distance_km(lat1, lng1, lat2, lng2):
+                R = 6371
+                lat1_rad = math.radians(lat1)
+                lat2_rad = math.radians(lat2)
+                delta_lat = math.radians(lat2 - lat1)
+                delta_lng = math.radians(lng2 - lng1)
+                a = math.sin(delta_lat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lng/2)**2
+                c = 2 * math.asin(math.sqrt(a))
+                return R * c
+
+            # Score each route by number of incident markers within 1km
+            best_safe_idx = 0
+            min_incidents = float('inf')
+            for idx, route in enumerate(fastest_data["routes"]):
+                coords = route.get("geometry", {}).get("coordinates", [])
+                if not coords:
+                    continue
+                route_latlngs = [[c[1], c[0]] for c in coords]
+                count = 0
+                for incident in incident_alerts:
+                    inc_lat = incident["latitude"]
+                    inc_lng = incident["longitude"]
+                    # Find closest point on route
+                    min_dist = min(distance_km(inc_lat, inc_lng, wp[0], wp[1]) for wp in route_latlngs)
+                    if min_dist <= 1.0:
+                        count += 1
+                if count < min_incidents:
+                    min_incidents = count
+                    best_safe_idx = idx
+
+            # Fastest = first route, safest = route with fewest incidents
             fastest_route = fastest_data["routes"][0]
             fastest_coordinates = []
             if fastest_route.get("geometry", {}).get("coordinates"):
                 fastest_coordinates = [[coord[1], coord[0]] for coord in fastest_route["geometry"]["coordinates"]]
-            
-            # Use alternative route as "safe" route if available, otherwise use fastest
-            safe_route = fastest_route
-            safe_coordinates = fastest_coordinates.copy()
-            
-            # If OSRM returned alternatives, use the second route as the safer alternative
-            if len(fastest_data.get("routes", [])) > 1:
-                safe_route = fastest_data["routes"][1]
-                if safe_route.get("geometry", {}).get("coordinates"):
-                    safe_coordinates = [[coord[1], coord[0]] for coord in safe_route["geometry"]["coordinates"]]
-            
+
+            safe_route = fastest_data["routes"][best_safe_idx]
+            safe_coordinates = []
+            if safe_route.get("geometry", {}).get("coordinates"):
+                safe_coordinates = [[coord[1], coord[0]] for coord in safe_route["geometry"]["coordinates"]]
+
             return {
                 "fastestRoute": {
                     "coordinates": fastest_coordinates,
-                    "distance": fastest_route.get("distance", 0) / 1000,  # Convert to km
-                    "duration": fastest_route.get("duration", 0) / 60,  # Convert to minutes
+                    "distance": fastest_route.get("distance", 0) / 1000,
+                    "duration": fastest_route.get("duration", 0) / 60,
                     "type": "fastest"
                 },
                 "safeRoute": {
                     "coordinates": safe_coordinates,
-                    "distance": safe_route.get("distance", 0) / 1000,  # Convert to km
-                    "duration": safe_route.get("duration", 0) / 60,  # Convert to minutes
+                    "distance": safe_route.get("distance", 0) / 1000,
+                    "duration": safe_route.get("duration", 0) / 60,
                     "type": "safe"
                 }
             }
