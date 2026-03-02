@@ -1,5 +1,5 @@
 import { MapContainer, TileLayer, Marker, Popup, CircleMarker, useMap } from 'react-leaflet';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -69,9 +69,16 @@ const getIncidentEmoji = (type) => {
 // Route layer component that adds polylines to existing map
 function RouteLayer({ routes, selectedRoute, startCoords, endCoords }) {
   const map = useMap();
+  const layersRef = useRef([]);
 
   useEffect(() => {
     if (!map || !routes) return;
+
+    // Clean up previous layers
+    layersRef.current.forEach(layer => {
+      map.removeLayer(layer);
+    });
+    layersRef.current = [];
 
     console.log('Adding routes to heatmap');
 
@@ -86,6 +93,7 @@ function RouteLayer({ routes, selectedRoute, startCoords, endCoords }) {
         opacity: selectedRoute === 'fastest' ? 1 : 0.5,
         dashArray: selectedRoute === 'fastest' ? null : '5,5'
       }).addTo(map);
+      layersRef.current.push(fastestPolyline);
     }
 
     // Add safe route
@@ -96,21 +104,32 @@ function RouteLayer({ routes, selectedRoute, startCoords, endCoords }) {
         opacity: selectedRoute === 'safe' ? 1 : 0.5,
         dashArray: selectedRoute === 'safe' ? null : '5,5'
       }).addTo(map);
+      layersRef.current.push(safePolyline);
     }
 
     // Add start marker
     if (startCoords) {
-      L.marker([startCoords.latitude, startCoords.longitude], { icon: startIcon })
+      const startMarker = L.marker([startCoords.latitude, startCoords.longitude], { icon: startIcon })
         .bindPopup(`<strong>Start</strong><br />${startCoords.display_name || startCoords.latitude.toFixed(4) + ', ' + startCoords.longitude.toFixed(4)}`)
         .addTo(map);
+      layersRef.current.push(startMarker);
     }
 
     // Add end marker
     if (endCoords) {
-      L.marker([endCoords.latitude, endCoords.longitude], { icon: endIcon })
+      const endMarker = L.marker([endCoords.latitude, endCoords.longitude], { icon: endIcon })
         .bindPopup(`<strong>End</strong><br />${endCoords.display_name || endCoords.latitude.toFixed(4) + ', ' + endCoords.longitude.toFixed(4)}`)
         .addTo(map);
+      layersRef.current.push(endMarker);
     }
+
+    return () => {
+      // Cleanup on unmount
+      layersRef.current.forEach(layer => {
+        map.removeLayer(layer);
+      });
+      layersRef.current = [];
+    };
   }, [map, routes, selectedRoute, startCoords, endCoords]);
 
   return null;
