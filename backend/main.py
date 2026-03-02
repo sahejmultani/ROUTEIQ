@@ -1441,7 +1441,7 @@ async def calculate_route(
         vehicle_id: Optional vehicle ID to start from vehicle location
     
     Returns:
-        Two routes: "fastest" (direct) and "safe" (avoiding incident hotspots)
+        Two routes: "fastest" (direct) and "safe" (alternative route)
     """
     import httpx
     
@@ -1450,7 +1450,7 @@ async def calculate_route(
     
     try:
         async with httpx.AsyncClient() as client:
-            # Get fastest route
+            # Get fastest route with alternatives
             coords_str = f"{start_lng},{start_lat};{end_lng},{end_lat}"
             fastest_url = f"{osrm_url}/{coords_str}"
             
@@ -1458,7 +1458,8 @@ async def calculate_route(
                 fastest_url,
                 params={
                     "overview": "full",
-                    "geometries": "geojson"
+                    "geometries": "geojson",
+                    "alternatives": "true"  # Request alternative routes
                 },
                 timeout=10.0
             )
@@ -1468,16 +1469,21 @@ async def calculate_route(
             if fastest_data.get("code") != "Ok" or not fastest_data.get("routes"):
                 return {"error": "Route calculation failed", "code": fastest_data.get("code")}
             
+            # Extract fastest route (first result from OSRM)
             fastest_route = fastest_data["routes"][0]
-            
-            # Extract coordinates from the route
             fastest_coordinates = []
             if fastest_route.get("geometry", {}).get("coordinates"):
                 fastest_coordinates = [[coord[1], coord[0]] for coord in fastest_route["geometry"]["coordinates"]]
             
-            # For safe route, we'll return the same for now but with adjustments for incident hotspots
-            # In a production system, we could use OSRM's alternatives or implement custom routing
-            safe_coordinates = fastest_coordinates.copy()  # Placeholder - same as fastest
+            # Use alternative route as "safe" route if available, otherwise use fastest
+            safe_route = fastest_route
+            safe_coordinates = fastest_coordinates.copy()
+            
+            # If OSRM returned alternatives, use the second route as the safer alternative
+            if len(fastest_data.get("routes", [])) > 1:
+                safe_route = fastest_data["routes"][1]
+                if safe_route.get("geometry", {}).get("coordinates"):
+                    safe_coordinates = [[coord[1], coord[0]] for coord in safe_route["geometry"]["coordinates"]]
             
             return {
                 "fastestRoute": {
@@ -1488,12 +1494,13 @@ async def calculate_route(
                 },
                 "safeRoute": {
                     "coordinates": safe_coordinates,
-                    "distance": fastest_route.get("distance", 0) / 1000,
-                    "duration": fastest_route.get("duration", 0) / 60,
+                    "distance": safe_route.get("distance", 0) / 1000,  # Convert to km
+                    "duration": safe_route.get("duration", 0) / 60,  # Convert to minutes
                     "type": "safe"
                 }
             }
     except Exception as e:
+        print(f"Route calculation error: {str(e)}")
         return {"error": str(e), "message": "Failed to calculate route"}
 
 
