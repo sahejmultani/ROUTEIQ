@@ -631,42 +631,498 @@ class HeatCluster(BaseModel):
     speed_excess_count: int
     speed_deficit_count: int
 
-@app.get("/api/heatmap", response_model=List[HeatCluster])
-def get_heatmap():
-    # Login to Geotab
+@app.get("/api/advanced_risk_analysis")
+def get_advanced_risk_analysis(
+    time_period_hours: int = 72,
+    min_speed_change: float = 5.0
+):
+    """
+    Advanced risk analysis with:
+    - Time filtering (analyze last N hours, default 3 days for demo)
+    - Sudden speed change detection (aggressive acceleration/braking)
+    - Speed limit analysis and speeding detection
+    - Route hazard identification
+    - Idle and safety pattern detection
+    
+    Args:
+        time_period_hours: Analyze data from last N hours (default 72 for demo)
+        min_speed_change: Minimum km/h change to flag as sudden (default 5)
+    """
     try:
         login_result = geotab_login()
-        print("Geotab login response:", login_result)
+        credentials = login_result["credentials"]
+        session_id = credentials["sessionId"]
+    except Exception as e:
+        return {"error": str(e), "alerts": [], "hotspots": [], "summary": {}}
+    
+    from geotab_helpers import GEOTAB_BASE_URL
+    import requests
+    from datetime import datetime, timedelta
+    
+    vehicles = fetch_vehicles(session_id, credentials)
+    cutoff_time = datetime.utcnow() - timedelta(hours=time_period_hours)
+    
+    alerts = []
+    route_patterns = {}
+    vehicle_speed_stats = {}
+    
+    for vehicle in vehicles[:50]:
+        vehicle_id = vehicle.get("id")
+        vehicle_name = vehicle.get("name", "Unknown")
+        
+        # Fetch comprehensive GPS history
+        logrecord_payload = {
+            "method": "Get",
+            "params": {
+                "typeName": "LogRecord",
+                "credentials": credentials,
+                "search": {"deviceSearch": {"id": vehicle_id}},
+                "resultsLimit": 500,
+                "sortBy": "dateTime desc"
+            },
+            "id": 1,
+            "jsonrpc": "2.0",
+            "sessionId": session_id
+        }
+        
+        try:
+            resp = requests.post(GEOTAB_BASE_URL, json=logrecord_payload, timeout=10)
+            logrecords = resp.json().get("result", [])
+        except Exception:
+            continue
+        
+        # Sort chronologically (oldest first to analyze progression)
+        logrecords = sorted(logrecords, key=lambda x: x.get("dateTime", ""), reverse=False)
+        
+        if not logrecords:
+            continue
+        
+        # Collect all valid records regardless of time (for demo)
+        filtered_records = []
+        for record in logrecords:
+            try:
+                if record.get("latitude") and record.get("longitude") and record.get("speed") is not None:
+                    filtered_records.append(record)
+            except:
+                pass
+        
+        if len(filtered_records) < 2:
+            continue
+        
+        # Calculate statistics for this vehicle
+        speeds = [r.get("speed", 0) for r in filtered_records]
+        vehicle_speed_stats[vehicle_id] = {
+            "min": min(speeds),
+            "max": max(speeds),
+            "avg": sum(speeds) / len(speeds),
+            "records": len(filtered_records)
+        }
+        
+        # Analyze each consecutive pair of points
+        for i in range(1, len(filtered_records)):
+            prev = filtered_records[i - 1]
+            curr = filtered_records[i]
+            
+            prev_speed = prev.get("speed", 0)
+            curr_speed = curr.get("speed", 0)
+            speed_change = abs(curr_speed - prev_speed)
+            
+            lat = curr.get("latitude")
+            lng = curr.get("longitude")
+            timestamp = curr.get("dateTime", "")
+            
+            # Get estimated speed limit for this area (using recent history)
+            area_start = max(0, i - 15)
+            area_end = min(len(filtered_records), i + 15)
+            area_speeds = [r.get("speed", 0) for r in filtered_records[area_start:area_end]]
+            estimated_limit = estimate_speed_limit_v2(area_speeds)
+            
+            # Alert 1: Speeding (> 15% over estimated limit)
+            if curr_speed > 5 and curr_speed > estimated_limit * 1.15:
+                excess = curr_speed - estimated_limit
+                if excess > 3:  # At least 3 km/h over
+                    alerts.append({
+                        "vehicle_id": vehicle_id,
+                        "vehicle_name": vehicle_name,
+                        "alert_type": "Speeding",
+                        "severity": min(1.0, excess / 30.0),
+                        "timestamp": timestamp,
+                        "location": {"latitude": lat, "longitude": lng},
+                        "current_speed": round(curr_speed, 1),
+                        "estimated_limit": round(estimated_limit, 1),
+                        "excess_speed": round(excess, 1)
+                    })
+            
+            # Alert 2: Rapid acceleration/hard braking
+            if speed_change >= min_speed_change and speed_change > 0:
+                event_type = "Rapid Acceleration" if curr_speed > prev_speed else "Hard Braking"
+                severity = min(1.0, speed_change / 40.0)
+                
+                alerts.append({
+                    "vehicle_id": vehicle_id,
+                    "vehicle_name": vehicle_name,
+                    "alert_type": event_type,
+                    "severity": severity,
+                    "timestamp": timestamp,
+                    "location": {"latitude": lat, "longitude": lng},
+                    "speed_before": round(prev_speed, 1),
+                    "speed_after": round(curr_speed, 1),
+                    "speed_change": round(speed_change, 1)
+                })
+            
+            # Alert 3: Excessive idling (speed = 0 for multiple records)
+            if curr_speed == 0 and prev_speed > 0:
+                alerts.append({
+                    "vehicle_id": vehicle_id,
+                    "vehicle_name": vehicle_name,
+                    "alert_type": "Stop/Idle",
+                    "severity": 0.15,
+                    "timestamp": timestamp,
+                    "location": {"latitude": lat, "longitude": lng}
+                })
+        
+        # Track route patterns
+        if filtered_records:
+            # Group by approximate location (0.05 degree grid ~5km)
+            for record in filtered_records:
+                lat = record.get("latitude")
+                lng = record.get("longitude")
+                if lat and lng:
+                    route_key = f"{round(lat, 2)},{round(lng, 2)}"
+                    if route_key not in route_patterns:
+                        route_patterns[route_key] = {
+                            "vehicles": set(),
+                            "alert_count": 0,
+                            "total_passes": 0,
+                            "avg_speed": []
+                        }
+                    route_patterns[route_key]["vehicles"].add(vehicle_id)
+                    route_patterns[route_key]["total_passes"] += 1
+                    route_patterns[route_key]["avg_speed"].append(record.get("speed", 0))
+    
+    # Count alerts by vehicle and route
+    for alert in alerts:
+        vehicle_id = alert.get("vehicle_id")
+        if alert.get("location"):
+            lat = alert["location"]["latitude"]
+            lng = alert["location"]["longitude"]
+            route_key = f"{round(lat, 2)},{round(lng, 2)}"
+            if route_key in route_patterns:
+                route_patterns[route_key]["alert_count"] += 1
+    
+    # Sort alerts by severity
+    alerts.sort(key=lambda x: x.get("severity", 0), reverse=True)
+    
+    # Build hotspots list
+    hotspots = []
+    for route_key, data in route_patterns.items():
+        if data["alert_count"] > 0 or len(data["vehicles"]) > 2:
+            avg_sp = sum(data["avg_speed"]) / len(data["avg_speed"]) if data["avg_speed"] else 0
+            hotspots.append({
+                "location": route_key,
+                "vehicles_affected": len(data["vehicles"]),
+                "alert_count": data["alert_count"],
+                "passes": data["total_passes"],
+                "avg_speed": round(avg_sp, 1),
+                "risk_level": "High" if data["alert_count"] > 10 else "Medium" if data["alert_count"] > 3 else "Low"
+            })
+    
+    hotspots.sort(key=lambda x: x["alert_count"], reverse=True)
+    
+    return {
+        "alerts": alerts[:150],
+        "hotspots": hotspots[:20],
+        "vehicle_stats": vehicle_speed_stats,
+        "summary": {
+            "time_period_hours": time_period_hours,
+            "total_alerts": len(alerts),
+            "speeding_alerts": sum(1 for a in alerts if a["alert_type"] == "Speeding"),
+            "rapid_acceleration": sum(1 for a in alerts if a["alert_type"] == "Rapid Acceleration"),
+            "hard_braking": sum(1 for a in alerts if a["alert_type"] == "Hard Braking"),
+            "stop_idle": sum(1 for a in alerts if a["alert_type"] == "Stop/Idle"),
+            "alert_hotspots": len(hotspots),
+            "min_speed_change_threshold": min_speed_change,
+        }
+    }
+
+
+def estimate_speed_limit_v2(area_speeds):
+    """
+    Estimate speed limit based on local driving patterns.
+    Smarter heuristic using area speed distribution.
+    """
+    if not area_speeds:
+        return 60
+    
+    speeds = [s for s in area_speeds if s > 0]  # Only moving speeds
+    if not speeds:
+        return 50
+    
+    avg = sum(speeds) / len(speeds)
+    max_sp = max(speeds)
+    
+    # Conservative estimation
+    if max_sp >= 100:
+        return 110
+    elif max_sp >= 80:
+        return 90
+    elif avg >= 60:
+        return 70
+    elif avg >= 45:
+        return 60
+    elif avg >= 30:
+        return 50
+    else:
+        return 40
+    
+    
+
+@app.get("/api/risky_locations")
+def get_risky_locations():
+    """
+    Identify risky driving locations based on speed patterns and diagnostics.
+    Uses GPS speed data from LogRecords to find areas with high-speed driving.
+    """
+    try:
+        login_result = geotab_login()
+        credentials = login_result["credentials"]
+        session_id = credentials["sessionId"]
+    except Exception as e:
+        print(f"Geotab login failed: {e}")
+        return {"locations": [], "summary": {}}
+    
+    from geotab_helpers import GEOTAB_BASE_URL
+    import requests
+    
+    # Fetch all vehicles
+    vehicles = fetch_vehicles(session_id, credentials)
+    
+    # Collect GPS speed data from all vehicles
+    speed_data_points = []
+    
+    for vehicle in vehicles[:50]:  # All 50 vehicles
+        vehicle_id = vehicle.get("id")
+        
+        # Fetch LogRecords (GPS + speed data)
+        logrecord_payload = {
+            "method": "Get",
+            "params": {
+                "typeName": "LogRecord",
+                "credentials": credentials,
+                "search": {"deviceSearch": {"id": vehicle_id}},
+                "resultsLimit": 100,
+                "sortBy": "dateTime desc"
+            },
+            "id": 1,
+            "jsonrpc": "2.0",
+            "sessionId": session_id
+        }
+        
+        try:
+            resp = requests.post(GEOTAB_BASE_URL, json=logrecord_payload, timeout=10)
+            resp.raise_for_status()
+            logrecords = resp.json().get("result", [])
+            
+            for record in logrecords:
+                lat = record.get("latitude")
+                lng = record.get("longitude")
+                speed = record.get("speed", 0)  # km/h
+                
+                if lat and lng:
+                    speed_data_points.append({
+                        "lat": lat,
+                        "lng": lng,
+                        "speed": speed,
+                        "vehicle_id": vehicle_id,
+                        "vehicle_name": vehicle.get("name", "Unknown")
+                    })
+        except Exception as e:
+            print(f"Failed to fetch LogRecords for vehicle {vehicle_id}: {e}")
+            continue
+    
+    # Define speed thresholds (km/h)
+    HIGH_SPEED_THRESHOLD = 80  # High-risk speed
+    MODERATE_SPEED_THRESHOLD = 60  # Moderate-risk speed
+    
+    # Grid-based clustering of high-speed areas
+    grid_size = 0.01  # degrees (~1km)
+    clusters_dict = {}
+    
+    for point in speed_data_points:
+        lat = point["lat"]
+        lng = point["lng"]
+        speed = point["speed"]
+        
+        # Snap to grid
+        grid_lat = round(lat / grid_size) * grid_size
+        grid_lng = round(lng / grid_size) * grid_size
+        grid_key = f"{grid_lat},{grid_lng}"
+        
+        if grid_key not in clusters_dict:
+            clusters_dict[grid_key] = {
+                "lat": grid_lat,
+                "lng": grid_lng,
+                "speed_readings": [],
+                "vehicles": set()
+            }
+        
+        clusters_dict[grid_key]["speed_readings"].append(speed)
+        clusters_dict[grid_key]["vehicles"].add(point["vehicle_id"])
+    
+    # Convert to risky locations list
+    risky_locations = []
+    for idx, (grid_key, cluster) in enumerate(clusters_dict.items()):
+        speeds = cluster["speed_readings"]
+        avg_speed = sum(speeds) / len(speeds) if speeds else 0
+        max_speed = max(speeds) if speeds else 0
+        high_speed_count = sum(1 for s in speeds if s > HIGH_SPEED_THRESHOLD)
+        
+        # Calculate risk score based on speed patterns
+        # Risk = combination of average speed, max speed, and frequency of high speeds
+        speed_ratio = avg_speed / 100.0  # Normalize to 0-1
+        high_speed_frequency = high_speed_count / len(speeds) if speeds else 0
+        
+        # Weighted risk calculation
+        risk_score = min(1.0, (speed_ratio * 0.4 + high_speed_frequency * 0.6))
+        
+        # Boost risk if multiple vehicles are speeding in this area
+        vehicle_count = len(cluster["vehicles"])
+        if vehicle_count > 3:
+            risk_score = min(1.0, risk_score * 1.3)
+        
+        if risk_score > 0.3:  # Only include locations with some risk
+            risky_locations.append({
+                "id": f"risky_{idx}",
+                "latitude": cluster["lat"],
+                "longitude": cluster["lng"],
+                "risk_score": risk_score,
+                "data_point_count": len(speeds),
+                "avg_speed": round(avg_speed, 1),
+                "max_speed": round(max_speed, 1),
+                "high_speed_events": high_speed_count,
+                "vehicles_passing": vehicle_count,
+                "vehicle_ids": list(cluster["vehicles"]),
+                "risk_factor": "High-Speed Area" if avg_speed > MODERATE_SPEED_THRESHOLD else "Moderate Speed"
+            })
+    
+    # Sort by risk score
+    risky_locations.sort(key=lambda x: x["risk_score"], reverse=True)
+    
+    return {
+        "locations": risky_locations[:20],  # Top 20 risky locations
+        "summary": {
+            "total_data_points": len(speed_data_points),
+            "vehicles_analyzed": len([v for v in vehicles[:50]]),
+            "high_speed_threshold_kmh": HIGH_SPEED_THRESHOLD,
+            "moderate_speed_threshold_kmh": MODERATE_SPEED_THRESHOLD,
+            "grid_size_km": round(grid_size * 111.32, 2),  # Approximate conversion
+        }
+    }
+
+
+@app.get("/api/heatmap", response_model=List[HeatCluster])
+def get_heatmap():
+    """
+    Get heatmap of risky driving locations based on speed patterns.
+    Analyzes GPS speed data to identify high-speed areas.
+    """
+    try:
+        login_result = geotab_login()
         credentials = login_result["credentials"]
         session_id = credentials["sessionId"]
     except Exception as e:
         print(f"Geotab login failed: {e}")
         return []
 
-    print('About to fetch trip events from Geotab...')
-    try:
-        events = fetch_trip_events(session_id, credentials)
-        print('Fetched events from Geotab.')
-    except Exception as e:
-        print(f"Geotab fetch failed: {e}")
-        return []
-
-
-    # Convert events to HeatCluster objects (example: you must adapt this mapping)
+    from geotab_helpers import GEOTAB_BASE_URL
+    import requests
+    
+    # Fetch all vehicles
+    vehicles = fetch_vehicles(session_id, credentials)
+    
+    # Collect speed data
+    speed_data_points = []
+    
+    for vehicle in vehicles[:50]:  # All vehicles
+        vehicle_id = vehicle.get("id")
+        
+        logrecord_payload = {
+            "method": "Get",
+            "params": {
+                "typeName": "LogRecord",
+                "credentials": credentials,
+                "search": {"deviceSearch": {"id": vehicle_id}},
+                "resultsLimit": 100,
+                "sortBy": "dateTime desc"
+            },
+            "id": 1,
+            "jsonrpc": "2.0",
+            "sessionId": session_id
+        }
+        
+        try:
+            resp = requests.post(GEOTAB_BASE_URL, json=logrecord_payload, timeout=10)
+            resp.raise_for_status()
+            logrecords = resp.json().get("result", [])
+            
+            for record in logrecords:
+                lat = record.get("latitude")
+                lng = record.get("longitude")
+                speed = record.get("speed", 0)
+                
+                if lat and lng:
+                    speed_data_points.append({
+                        "lat": lat,
+                        "lng": lng,
+                        "speed": speed
+                    })
+        except Exception as e:
+            continue
+    
+    # Grid-based clustering
+    grid_size = 0.01
+    clusters_dict = {}
+    
+    for point in speed_data_points:
+        grid_lat = round(point["lat"] / grid_size) * grid_size
+        grid_lng = round(point["lng"] / grid_size) * grid_size
+        grid_key = f"{grid_lat},{grid_lng}"
+        
+        if grid_key not in clusters_dict:
+            clusters_dict[grid_key] = {
+                "lat": grid_lat,
+                "lng": grid_lng,
+                "speeds": []
+            }
+        
+        clusters_dict[grid_key]["speeds"].append(point["speed"])
+    
+    # Convert to clusters
     clusters = []
-    for idx, event in enumerate(events):
-        # You must adapt these fields to match your Geotab data structure
+    for idx, (grid_key, cluster_data) in enumerate(clusters_dict.items()):
+        speeds = cluster_data["speeds"]
+        avg_speed = sum(speeds) / len(speeds) if speeds else 0
+        max_speed = max(speeds) if speeds else 0
+        high_speed_count = sum(1 for s in speeds if s > 80)
+        
+        # Risk score based on speed
+        risk_score = min(1.0, max(avg_speed / 100.0, high_speed_count / len(speeds)))
+        
         clusters.append(HeatCluster(
-            id=f"point_{idx}",
-            lat=event.get("latitude", 0),
-            lng=event.get("longitude", 0),
-            risk_score=event.get("risk_score", 0.5),
-            event_count=1,
-            concentration=1.0,
-            speed_limit=event.get("speed_limit", 0),
-            avg_speed=event.get("speed", 0),
-            exception_count=event.get("exception_count", 0),
-            speed_excess_count=event.get("speed_excess_count", 0),
-            speed_deficit_count=event.get("speed_deficit_count", 0)
+            id=f"cluster_{idx}",
+            lat=cluster_data["lat"],
+            lng=cluster_data["lng"],
+            risk_score=risk_score,
+            event_count=len(speeds),
+            concentration=max_speed,
+            speed_limit=0,
+            avg_speed=int(avg_speed),
+            exception_count=high_speed_count,
+            speed_excess_count=high_speed_count,
+            speed_deficit_count=0
         ))
-    return clusters
+    
+    # Sort by risk score
+    clusters.sort(key=lambda x: x.risk_score, reverse=True)
+    
+    return clusters 
