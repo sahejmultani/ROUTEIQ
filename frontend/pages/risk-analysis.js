@@ -48,7 +48,6 @@ export default function RiskAnalysis() {
   const [selectedVehicle, setSelectedVehicle] = useState('');
   const [loading, setLoading] = useState(true);
   const [timePeriod, setTimePeriod] = useState(72);
-  const [minSpeedChange, setMinSpeedChange] = useState(5);
   const [addressCache, setAddressCache] = useState({});
   const [alertAddresses, setAlertAddresses] = useState({});
 
@@ -72,10 +71,10 @@ export default function RiskAnalysis() {
     fetchVehicles();
   }, []);
 
-  const fetchAnalysis = async (hours, speedChange, vehicleId = null) => {
+  const fetchAnalysis = async (hours, vehicleId = null) => {
     setLoading(true);
     try {
-      let url = `http://localhost:8000/api/advanced_risk_analysis?time_period_hours=${hours}&min_speed_change=${speedChange}`;
+      let url = `http://localhost:8000/api/advanced_risk_analysis?time_period_hours=${hours}`;
       if (vehicleId) {
         url += `&vehicle_id=${vehicleId}`;
       }
@@ -106,12 +105,12 @@ export default function RiskAnalysis() {
   // Fetch analysis when vehicle selection changes
   useEffect(() => {
     if (selectedVehicle) {
-      fetchAnalysis(timePeriod, minSpeedChange, selectedVehicle);
+      fetchAnalysis(timePeriod, selectedVehicle);
     }
   }, [selectedVehicle]);
 
   const handleRefresh = () => {
-    fetchAnalysis(timePeriod, minSpeedChange, selectedVehicle);
+    fetchAnalysis(timePeriod, selectedVehicle);
   };
 
   const getSeverityColor = (severity, alertType) => {
@@ -186,19 +185,6 @@ export default function RiskAnalysis() {
               max="720"
               value={timePeriod}
               onChange={(e) => setTimePeriod(Math.max(1, parseInt(e.target.value) || 24))}
-              style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px' }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '5px', color: '#666' }}>
-              Min Speed Change (km/h)
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="50"
-              value={minSpeedChange}
-              onChange={(e) => setMinSpeedChange(Math.max(1, parseInt(e.target.value) || 5))}
               style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px' }}
             />
           </div>
