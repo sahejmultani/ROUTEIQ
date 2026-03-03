@@ -250,7 +250,14 @@ export default function RiskAnalysis() {
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px #eee' }}>
               <div style={{ fontSize: '12px', color: '#999', fontWeight: 600, marginBottom: '5px' }}>TOTAL INCIDENTS</div>
               <div style={{ fontSize: '28px', fontWeight: 700, color: '#e74c3c' }}>{(data.summary?.total_alerts || 0).toLocaleString()}</div>
-              <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>Last {data.summary?.time_period_hours || 72}h</div>
+              <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>
+                {data.summary?.date_filter === 'all' ? 'All Time' : 
+                 data.summary?.date_filter === 'today' ? 'Last 24 Hours' :
+                 data.summary?.date_filter === 'lastWeek' ? 'Last 7 Days' :
+                 data.summary?.date_filter === 'lastMonth' ? 'Last 30 Days' :
+                 data.summary?.specific_date ? `${new Date(data.summary.specific_date).toLocaleDateString()}` :
+                 'All Time'}
+              </div>
             </div>
 
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px #eee' }}>
