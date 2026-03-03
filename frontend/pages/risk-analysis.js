@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Navbar from '../components/Navbar';
 
 const getIntersectionFromCoordinates = async (lat, lng, cache = {}) => {
   const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
@@ -14,12 +15,8 @@ const getIntersectionFromCoordinates = async (lat, lng, cache = {}) => {
     const data = await response.json();
     const address = data.address || {};
     
-    // Try to construct intersection
     let intersection = null;
-    
-    // Check for explicit road intersection
     if (address.road) {
-      // Look for nearby features that could indicate an intersection
       if (address.neighbourhood) {
         intersection = `${address.road} & ${address.neighbourhood}`;
       } else if (address.suburb) {
@@ -47,22 +44,19 @@ export default function RiskAnalysis() {
   const [vehicles, setVehicles] = useState([]);
   const [selectedVehicle, setSelectedVehicle] = useState('');
   const [loading, setLoading] = useState(true);
-  const [dateFilter, setDateFilter] = useState('all');  // 'all', 'today', 'lastWeek', 'lastMonth', or specific date
+  const [dateFilter, setDateFilter] = useState('all');
   const [specificDate, setSpecificDate] = useState('');
   const [addressCache, setAddressCache] = useState({});
   const [alertAddresses, setAlertAddresses] = useState({});
 
-  // Fetch available vehicles on mount
   useEffect(() => {
     const fetchVehicles = async () => {
       try {
         const response = await fetch('http://localhost:8000/api/vehicles');
         const result = await response.json();
-        // API returns array directly, not wrapped in object
         const vehicleList = Array.isArray(result) ? result : result.vehicles || [];
         if (vehicleList.length > 0) {
           setVehicles(vehicleList);
-          // Auto-select first vehicle
           setSelectedVehicle(vehicleList[0].id);
         }
       } catch (error) {
@@ -87,7 +81,6 @@ export default function RiskAnalysis() {
       const result = await response.json();
       setData(result);
 
-      // Fetch intersections for alerts
       if (result.alerts) {
         const newAlertAddresses = {};
         for (let i = 0; i < Math.min(result.alerts.length, 30); i++) {
@@ -106,7 +99,6 @@ export default function RiskAnalysis() {
     }
   };
 
-  // Fetch analysis when vehicle selection or date filter changes
   useEffect(() => {
     if (selectedVehicle) {
       fetchAnalysis(dateFilter, selectedVehicle, specificDate);
@@ -118,7 +110,6 @@ export default function RiskAnalysis() {
   };
 
   const getSeverityColor = (severity, alertType) => {
-    // Color-code by alert type
     if (alertType === 'Aggressive Speeding' || alertType === 'Harsh Braking') return '#c0392b';
     if (alertType === 'Slow Driving' || alertType === 'Rapid Acceleration') return '#e74c3c';
     if (alertType === 'Sharp Turn') return '#e67e22';
@@ -128,7 +119,7 @@ export default function RiskAnalysis() {
   };
 
   const getAlertIcon = (alertType) => {
-    switch(alertType) {
+    switch (alertType) {
       case 'Aggressive Speeding': return '⚡';
       case 'Harsh Braking': return '🛑';
       case 'Rapid Acceleration': return '📈';
@@ -139,255 +130,287 @@ export default function RiskAnalysis() {
   };
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Inter, Arial, sans-serif', background: '#f8f9fa', minHeight: '100vh' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '30px' }}>
-        <Link href="/fleet" legacyBehavior>
-          <a style={{ color: '#3498db', textDecoration: 'none', fontSize: '14px', marginBottom: '10px', display: 'inline-block' }}>
-            ← Back to Fleet
-          </a>
-        </Link>
-        <h1 style={{ margin: '10px 0 0 0', color: '#222', fontSize: '32px' }}>Vehicle Risk Analysis</h1>
-        <p style={{ color: '#666', marginTop: '5px', fontSize: '14px' }}>Real-time incident detection: speeding, harsh braking, sharp turns, and aggressive driving</p>
-      </div>
+    <div style={{ 
+      padding: '0', 
+      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif', 
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
+      minHeight: '100vh'
+    }}>
+      <Navbar />
 
-      {/* Controls */}
-      <div style={{ background: '#fff', padding: '15px', borderRadius: '12px', marginBottom: '20px', boxShadow: '0 2px 8px #eee' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '15px', marginBottom: '15px' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '5px', color: '#666' }}>
-              Select Vehicle
-            </label>
-            <select
-              value={selectedVehicle}
-              onChange={(e) => setSelectedVehicle(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                border: '1px solid #ddd',
-                borderRadius: '6px',
-                fontSize: '14px',
-                background: '#fff',
-                fontWeight: 600
-              }}
-            >
-              <option value="">-- Select Vehicle --</option>
-              {vehicles.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name || v.id}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '8px', color: '#666' }}>
-              Date Filter
-            </label>
-            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
-              {['all', 'today', 'lastWeek', 'lastMonth'].map((filter) => (
-                <button
-                  key={filter}
-                  onClick={() => {
-                    setDateFilter(filter);
-                    setSpecificDate('');
-                  }}
-                  style={{
-                    padding: '6px 12px',
-                    background: dateFilter === filter ? '#3498db' : '#ecf0f1',
-                    color: dateFilter === filter ? '#fff' : '#333',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: dateFilter === filter ? 600 : 500,
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  {filter === 'all' ? 'All' : filter === 'today' ? 'Today' : filter === 'lastWeek' ? 'Last Week' : 'Last Month'}
-                </button>
-              ))}
+      {/* Main Content */}
+      <div style={{ padding: '40px 30px', maxWidth: '1400px', margin: '0 auto' }}>
+        {/* Page Header */}
+        <div style={{ marginBottom: '32px', color: '#fff' }}>
+          <h2 style={{ margin: '0 0 12px 0', fontSize: '40px', fontWeight: 700 }}>Vehicle Risk Dashboard</h2>
+          <p style={{ margin: '0', fontSize: '16px', opacity: 0.9, maxWidth: '600px' }}>
+            Monitor real-time driving incidents including speeding, harsh braking, sharp turns, and aggressive acceleration
+          </p>
+        </div>
+
+        {/* Controls Card */}
+        <div style={{ 
+          background: 'rgba(255, 255, 255, 0.95)', 
+          backdropFilter: 'blur(15px)', 
+          padding: '28px', 
+          borderRadius: '16px', 
+          marginBottom: '28px', 
+          boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+          border: '1px solid rgba(255,255,255,0.3)'
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
+            {/* Vehicle Selector */}
+            <div>
+              <label style={{ 
+                display: 'block', 
+                fontSize: '13px', 
+                fontWeight: 700, 
+                marginBottom: '10px', 
+                color: '#667eea',
+                textTransform:  'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                🚙 Select Vehicle
+              </label>
+              <select
+                value={selectedVehicle}
+                onChange={(e) => setSelectedVehicle(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  border: '2px solid #e0e0e0',
+                  borderRadius: '10px',
+                  fontSize: '14px',
+                  background: '#fff',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  outline: 'none'
+                }}
+              >
+                <option value="">-- Select Vehicle --</option>
+                {vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name || v.id}
+                  </option>
+                ))}
+              </select>
             </div>
-            <input
-              type="date"
-              value={specificDate}
-              onChange={(e) => {
-                setSpecificDate(e.target.value);
-                setDateFilter('');
-              }}
-              style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px' }}
-            />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <button
-              onClick={handleRefresh}
-              style={{
-                width: '100%',
-                padding: '8px 15px',
-                background: '#3498db',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: '14px'
-              }}
-            >
-              {loading ? 'Analyzing...' : 'Refresh Analysis'}
-            </button>
+
+            {/* Time Period Filter */}
+            <div>
+              <label style={{ 
+                display: 'block', 
+                fontSize: '13px', 
+                fontWeight: 700, 
+                marginBottom: '10px', 
+                color: '#667eea',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                📅 Time Period
+              </label>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {['all', 'today', 'lastWeek', 'lastMonth'].map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => {
+                      setDateFilter(filter);
+                      setSpecificDate('');
+                    }}
+                    style={{
+                      padding: '10px 14px',
+                      background: dateFilter === filter ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#f0f0f0',
+                      color: dateFilter === filter ? '#fff' : '#333',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      transition: 'all 0.2s',
+                      flex: '1',
+                      minWidth: '70px'
+                    }}
+                  >
+                    {filter === 'all' ? 'All Time' : filter === 'today' ? 'Today' : filter === 'lastWeek' ? 'Week' : 'Month'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Specific Date */}
+            <div>
+              <label style={{ 
+                display: 'block', 
+                fontSize: '13px', 
+                fontWeight: 700, 
+                marginBottom: '10px', 
+                color: '#667eea',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                📆 Specific Date
+              </label>
+              <input
+                type="date"
+                value={specificDate}
+                onChange={(e) => {
+                  setSpecificDate(e.target.value);
+                  setDateFilter('');
+                }}
+                style={{ 
+                  width: '100%', 
+                  padding: '12px 14px', 
+                  border: '2px solid #e0e0e0', 
+                  borderRadius: '10px', 
+                  fontSize: '14px', 
+                  outline: 'none', 
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              />
+            </div>
+
+            {/* Refresh Button */}
+            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+              <button
+                onClick={handleRefresh}
+                style={{
+                  width: '100%',
+                  padding: '12px 20px',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  fontSize: '14px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {loading ? '⏳ Analyzing...' : '🔄 Refresh'}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-          <div style={{ fontSize: '16px', marginBottom: '10px' }}>⏳ Analyzing fleet data...</div>
-          <div style={{ fontSize: '12px', color: '#999' }}>This may take a moment</div>
-        </div>
-      ) : data ? (
-        <>
-          {/* Summary Stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '30px' }}>
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px #eee' }}>
-              <div style={{ fontSize: '12px', color: '#999', fontWeight: 600, marginBottom: '5px' }}>TOTAL INCIDENTS</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#e74c3c' }}>{(data.summary?.total_alerts || 0).toLocaleString()}</div>
-              <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>
-                {data.summary?.date_filter === 'all' ? 'All Time' : 
-                 data.summary?.date_filter === 'today' ? 'Last 24 Hours' :
-                 data.summary?.date_filter === 'lastWeek' ? 'Last 7 Days' :
-                 data.summary?.date_filter === 'lastMonth' ? 'Last 30 Days' :
-                 data.summary?.specific_date ? `${new Date(data.summary.specific_date).toLocaleDateString()}` :
-                 'All Time'}
-              </div>
-            </div>
-
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px #eee' }}>
-              <div style={{ fontSize: '12px', color: '#999', fontWeight: 600, marginBottom: '5px' }}>⚡ AGGRESSIVE SPEED</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#c0392b' }}>{data.summary.aggressive_speeding || 0}</div>
-              <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>20%+ over limit</div>
-            </div>
-
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px #eee' }}>
-              <div style={{ fontSize: '12px', color: '#999', fontWeight: 600, marginBottom: '5px' }}>🐢 SLOW DRIVING</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#e74c3c' }}>{data.summary.slow_driving || 0}</div>
-              <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>Below expected speed</div>
-            </div>
-
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px #eee' }}>
-              <div style={{ fontSize: '12px', color: '#999', fontWeight: 600, marginBottom: '5px' }}>🛑 HARSH BRAKING</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#e67e22' }}>{data.summary.harsh_braking || 0}</div>
-              <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>Rapid deceleration</div>
-            </div>
-
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px #eee' }}>
-              <div style={{ fontSize: '12px', color: '#999', fontWeight: 600, marginBottom: '5px' }}>🔄 SHARP TURNS</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#e67e22' }}>{data.summary.sharp_turns || 0}</div>
-              <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>60°+ turns</div>
-            </div>
-
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px #eee' }}>
-              <div style={{ fontSize: '12px', color: '#999', fontWeight: 600, marginBottom: '5px' }}>📈 RAPID ACCEL</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#f39c12' }}>{data.summary.rapid_acceleration || 0}</div>
-              <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>Fast acceleration</div>
-            </div>
+        {/* Content Area */}
+        {loading && !data ? (
+          <div style={{ textAlign: 'center', padding: '80px 20px', color: '#fff' }}>
+            <div style={{ fontSize: '56px', marginBottom: '20px', animation: 'pulse 2s infinite' }}>⏳</div>
+            <p style={{ fontSize: '20px', fontWeight: 600, marginBottom: '8px' }}>Analyzing vehicle data...</p>
+            <p style={{ fontSize: '16px', opacity: 0.8 }}>Please wait a moment while we process the telematics</p>
           </div>
+        ) : data ? (
+          <>
+            {/* Stats Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '28px' }}>
+              {[
+                { label: 'Total Incidents', value: data.summary?.total_alerts || 0, gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', icon: '📊' },
+                { label: 'Aggressive Speeding', value: data.summary?.aggressive_speeding || 0, gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', icon: '⚡' },
+                { label: 'Slow Driving', value: data.summary?.slow_driving || 0, gradient: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', icon: '🐢' },
+                { label: 'Harsh Braking', value: data.summary?.harsh_braking || 0, gradient: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', icon: '🛑' }
+              ].map((stat, idx) => (
+                <div key={idx} style={{ 
+                  background: stat.gradient, 
+                  padding: '24px', 
+                  borderRadius: '14px', 
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+                  color: '#fff',
+                  border: '1px solid rgba(255,255,255,0.2)'
+                }}>
+                  <div style={{ fontSize: '28px', marginBottom: '12px' }}>{stat.icon}</div>
+                  <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px', opacity: 0.9, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{stat.label}</div>
+                  <div style={{ fontSize: '36px', fontWeight: 700 }}>{stat.value.toLocaleString()}</div>
+                </div>
+              ))}
+            </div>
 
-          {/* Top Alerts */}
-          <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '30px', boxShadow: '0 2px 8px #eee' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '15px', color: '#222' }}>⚠️ Critical Incidents</h2>
-            {data.alerts.length === 0 ? (
-              <div style={{ padding: '30px', textAlign: 'center', color: '#999' }}>
-                <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '5px' }}>✅ No incidents detected</div>
-                <div style={{ fontSize: '12px' }}>Great driving! No harsh incidents in the selected period.</div>
+            {/* Alerts List */}
+            <div style={{ 
+              background: 'rgba(255, 255, 255, 0.95)', 
+              backdropFilter: 'blur(15px)', 
+              borderRadius: '16px', 
+              overflow: 'hidden',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+              border: '1px solid rgba(255,255,255,0.3)'
+            }}>
+              <div style={{ padding: '24px', borderBottom: '1px solid #f0f0f0' }}>
+                <h3 style={{ margin: '0', fontSize: '18px', fontWeight: 700, color: '#222' }}>
+                  Latest Incidents ({(data.alerts || []).length} events)
+                </h3>
               </div>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid #eee' }}>
-                      <th style={{ textAlign: 'left', padding: '10px', fontWeight: 600, color: '#666' }}>Type</th>
-                      <th style={{ textAlign: 'left', padding: '10px', fontWeight: 600, color: '#666' }}>Location</th>
-                      <th style={{ textAlign: 'left', padding: '10px', fontWeight: 600, color: '#666' }}>Details</th>
-                      <th style={{ textAlign: 'left', padding: '10px', fontWeight: 600, color: '#666' }}>Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.alerts.slice(0, 30).map((alert, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f0f0f0', background: idx % 2 ? '#fafafa' : '#fff' }}>
-                        <td style={{ padding: '10px' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '4px 8px',
-                            borderRadius: '4px',
-                            background: getSeverityColor(alert.severity, alert.alert_type),
-                            color: '#fff',
-                            fontSize: '11px',
-                            fontWeight: 600
-                          }}>
-                            {getAlertIcon(alert.alert_type)} {alert.alert_type}
-                          </span>
-                        </td>
-                        <td style={{ padding: '10px', color: '#666', fontSize: '12px', maxWidth: '200px' }}>
-                          {alertAddresses[idx] || `${alert.location.latitude.toFixed(4)}, ${alert.location.longitude.toFixed(4)}`}
-                        </td>
-                        <td style={{ padding: '10px', color: '#333', fontSize: '12px' }}>
-                          {alert.alert_type === 'Aggressive Speeding' && `${alert.excess_speed} km/h over (${alert.current_speed} vs ${alert.estimated_limit} limit)`}
-                          {alert.alert_type === 'Slow Driving' && `${alert.current_speed} km/h (expected ~${alert.expected_speed})`}
-                          {alert.alert_type === 'Harsh Braking' && `${alert.speed_change} km/h drop in ${alert.time_taken}s (${alert.speed_before} → ${alert.speed_after}) @ ${alert.deceleration_rate} km/h/s`}
-                          {alert.alert_type === 'Rapid Acceleration' && `${alert.speed_change} km/h gain in ${alert.time_taken}s (${alert.speed_before} → ${alert.speed_after}) @ ${alert.acceleration_rate} km/h/s`}
-                          {alert.alert_type === 'Sharp Turn' && `${alert.turn_angle}° turn at ${alert.speed_during_turn} km/h`}
-                        </td>
-                        <td style={{ padding: '10px', color: '#999', fontSize: '12px' }}>
-                          {new Date(alert.timestamp).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {data.alerts.length > 0 && (
-              <div style={{ marginTop: '15px', fontSize: '12px', color: '#666' }}>
-                Showing 1-{Math.min(30, data.alerts.length)} of {data.alerts.length} incidents
-              </div>
-            )}
-          </div>
 
-          {/* Vehicle Stats */}
-          {data.vehicle_stats && Object.keys(data.vehicle_stats).length > 0 && (
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px #eee' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '15px', color: '#222' }}>📊 Vehicle Speed Profile</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' }}>
-                {Object.entries(data.vehicle_stats).map(([vehicleId, stats], idx) => (
-                  <div key={idx} style={{
-                    background: '#f8f9fa',
-                    padding: '15px',
-                    borderRadius: '8px',
-                    border: '1px solid #ddd'
-                  }}>
-                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#666', marginBottom: '10px' }}>
-                      {vehicleId}
+              <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
+                {(data.alerts || []).slice(0, 25).map((alert, idx) => (
+                  <div key={idx} style={{ 
+                    padding: '16px 24px', 
+                    borderBottom: '1px solid #f0f0f0',
+                    display: 'flex',
+                    gap: '16px',
+                    alignItems: 'start',
+                    transition: 'all 0.2s',
+                    cursor: 'pointer'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f8f9fa'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div style={{ 
+                      fontSize: '24px',
+                      minWidth: '40px',
+                      textAlign: 'center'
+                    }}>
+                      {getAlertIcon(alert.alert_type)}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <div>
-                        <div style={{ fontSize: '10px', color: '#999' }}>MIN</div>
-                        <div style={{ fontSize: '16px', fontWeight: 700, color: '#27ae60' }}>{stats.min} km/h</div>
+                    
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
+                        <div>
+                          <h4 style={{ margin: '0 0 4px 0', fontSize: '14px', fontWeight: 700, color: '#222' }}>
+                            {alert.alert_type}
+                          </h4>
+                          <p style={{ margin: '0', fontSize: '12px', color: '#666' }}>
+                            {alertAddresses[idx] || 'Loading location...'}
+                          </p>
+                        </div>
+                        <div style={{ 
+                          background: getSeverityColor(alert.severity, alert.alert_type),
+                          color: '#fff',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: 600
+                        }}>
+                          {(alert.severity * 100).toFixed(0)}%
+                        </div>
                       </div>
-                      <div>
-                        <div style={{ fontSize: '10px', color: '#999' }}>MAX</div>
-                        <div style={{ fontSize: '16px', fontWeight: 700, color: '#e74c3c' }}>{stats.max} km/h</div>
-                      </div>
-                      <div style={{ gridColumn: '1 / -1' }}>
-                        <div style={{ fontSize: '10px', color: '#999' }}>AVERAGE</div>
-                        <div style={{ fontSize: '16px', fontWeight: 700, color: '#3498db' }}>{stats.avg.toFixed(1)} km/h</div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', fontSize: '12px' }}>
+                        <div><span style={{ color: '#999' }}>Speed:</span> <span style={{ fontWeight: 600, color: '#222' }}>{alert.current_speed} km/h</span></div>
+                        <div><span style={{ color: '#999' }}>Limit:</span> <span style={{ fontWeight: 600, color: '#222' }}>{alert.estimated_limit} km/h</span></div>
+                        <div><span style={{ color: '#999' }}>Time:</span> <span style={{ fontWeight: 600, color: '#222' }}>{new Date(alert.timestamp).toLocaleString()}</span></div>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-          )}
-        </>
-      ) : null}
+          </>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '60px 20px', color: '#fff' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>📭</div>
+            <p style={{ fontSize: '18px', fontWeight: 600 }}>No data available</p>
+            <p style={{ fontSize: '14px', opacity: 0.8 }}>Select a vehicle to view risk analysis</p>
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
+        }
+      `}</style>
     </div>
   );
 }

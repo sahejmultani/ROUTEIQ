@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import Navbar from '../components/Navbar';
 import Link from 'next/link';
+import Navbar from '../components/Navbar';
 import styles from '../styles/routing.module.css';
 
 const CombinedHeatmapRoute = dynamic(() => import('../components/CombinedHeatmapRoute'), {
@@ -252,162 +252,231 @@ export default function HeatmapPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f7f8fa', fontFamily: 'Poppins, Inter, Arial, sans-serif', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ 
+      minHeight: '100vh', 
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
+      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif', 
+      display: 'flex', 
+      flexDirection: 'column' 
+    }}>
       <Navbar />
+
       <Head>
         <title>Toronto Risk Heatmap & Routing</title>
         <meta name="description" content="Heatmap with integrated route planning" />
       </Head>
 
-      <header className={styles.header}>
-        <h1>Heatmap & Route Planning</h1>
-        <p>View risk areas and calculate safe routes</p>
-        <nav className={styles.nav}>
-          <Link href="/">Dashboard</Link>
-          <Link href="/risk-analysis">Risk Analysis</Link>
-        </nav>
-      </header>
+      {/* Main Content */}
+      <div style={{ padding: '40px 30px', maxWidth: '1400px', margin: '0 auto', width: '100%', flex: 1 }}>
+        {/* Page Header */}
+        <div style={{ marginBottom: '32px', color: '#fff' }}>
+          <h2 style={{ margin: '0 0 12px 0', fontSize: '40px', fontWeight: 700 }}>Heatmap & Route Planning</h2>
+          <p style={{ margin: '0', fontSize: '16px', opacity: 0.9 }}>
+            View high-risk driving areas and calculate safe routes
+          </p>
+        </div>
 
-      <main style={{ maxWidth: 1400, margin: '0 auto', padding: '2rem', width: '100%' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2rem' }}>
+        {/* Main Layout */}
+        <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '28px', minHeight: '600px' }}>
           {/* Left Panel - Routing Controls */}
-          <section className={styles.inputPanel} style={{ height: 'fit-content' }}>
-            <h2>Calculate Route</h2>
+          <div style={{ 
+            background: 'rgba(255, 255, 255, 0.95)', 
+            backdropFilter: 'blur(15px)', 
+            padding: '24px', 
+            borderRadius: '14px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+            border: '1px solid rgba(255,255,255,0.3)',
+            height: 'fit-content',
+            position: 'sticky',
+            top: '100px'
+          }}>
+            <h3 style={{ margin: '0 0 20px 0', fontSize: '16px', fontWeight: 700, color: '#222' }}>Calculate Route</h3>
 
             {/* Start Point */}
-            <div className={styles.inputGroup}>
-              <label htmlFor="startAddress">Start Point</label>
-              <div className={styles.autoCompleteContainer}>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, marginBottom: '8px', color: '#667eea', textTransform: 'uppercase', letterSpacing: '0.5px' }} htmlFor="startAddress">
+                📍 Start Point
+              </label>
+              <div style={{ position: 'relative' }}>
                 <input
                   id="startAddress"
                   type="text"
-                  placeholder="Enter starting address"
+                  placeholder="Starting address"
                   value={startAddress}
                   onChange={handleStartAddressChange}
                   onFocus={() => showStartSuggestions && setShowStartSuggestions(true)}
-                  className={styles.input}
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    border: '2px solid #e0e0e0',
+                    borderRadius: '10px',
+                    fontSize: '14px',
+                    outline: 'none',
+                    fontWeight: 600,
+                    boxSizing: 'border-box'
+                  }}
                 />
                 {showStartSuggestions && startAddressSuggestions.length > 0 && (
-                  <div className={styles.suggestionsList}>
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    background: '#fff',
+                    border: '1px solid #e0e0e0',
+                    borderTop: 'none',
+                    borderRadius: '0 0 10px 10px',
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    zIndex: 10
+                  }}>
                     {startAddressSuggestions.map((suggestion, idx) => (
                       <div
                         key={idx}
-                        className={styles.suggestionItem}
                         onClick={() => selectStartSuggestion(suggestion)}
                         style={{ 
+                          padding: '12px 14px',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid #f0f0f0',
                           backgroundColor: suggestion.type === 'vehicle' ? '#e3f2fd' : 'transparent',
-                          borderLeft: suggestion.type === 'vehicle' ? '3px solid #3498db' : 'none',
-                          paddingLeft: suggestion.type === 'vehicle' ? '12px' : '0'
+                          fontWeight: suggestion.type === 'vehicle' ? 600 : 500,
+                          fontSize: '13px',
+                          transition: 'background 0.2s'
                         }}
+                        onMouseEnter={(e) => e.target.style.background = suggestion.type === 'vehicle' ? '#bbdefb' : '#f5f5f5'}
+                        onMouseLeave={(e) => e.target.style.background = suggestion.type === 'vehicle' ? '#e3f2fd' : 'transparent'}
                       >
-                        <div className={styles.suggestionText}>
-                          {suggestion.type === 'vehicle' ? (
-                            <span style={{ fontWeight: '500' }}>{suggestion.display_name}</span>
-                          ) : (
-                            suggestion.display_name
-                          )}
-                        </div>
+                        {suggestion.display_name}
                       </div>
                     ))}
                   </div>
                 )}
               </div>
               {startCoords && (
-                <div className={styles.geocodedInfo}>
+                <div style={{ fontSize: '12px', color: '#27ae60', marginTop: '8px', fontWeight: 600 }}>
                   ✓ {startCoords.display_name || `${startCoords.latitude.toFixed(4)}, ${startCoords.longitude.toFixed(4)}`}
                 </div>
               )}
-
             </div>
 
             {/* End Point */}
-            <div className={styles.inputGroup}>
-              <label htmlFor="endAddress">Destination</label>
-              <div className={styles.autoCompleteContainer}>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, marginBottom: '8px', color: '#667eea', textTransform: 'uppercase', letterSpacing: '0.5px' }} htmlFor="endAddress">
+                🎯 Destination
+              </label>
+              <div style={{ position: 'relative' }}>
                 <input
                   id="endAddress"
                   type="text"
-                  placeholder="Enter destination address"
+                  placeholder="Destination address"
                   value={endAddress}
                   onChange={handleEndAddressChange}
                   onFocus={() => showEndSuggestions && setShowEndSuggestions(true)}
-                  className={styles.input}
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    border: '2px solid #e0e0e0',
+                    borderRadius: '10px',
+                    fontSize: '14px',
+                    outline: 'none',
+                    fontWeight: 600,
+                    boxSizing: 'border-box'
+                  }}
                 />
                 {showEndSuggestions && endAddressSuggestions.length > 0 && (
-                  <div className={styles.suggestionsList}>
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    background: '#fff',
+                    border: '1px solid #e0e0e0',
+                    borderTop: 'none',
+                    borderRadius: '0 0 10px 10px',
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    zIndex: 10
+                  }}>
                     {endAddressSuggestions.map((suggestion, idx) => (
                       <div
                         key={idx}
-                        className={styles.suggestionItem}
                         onClick={() => selectEndSuggestion(suggestion)}
                         style={{ 
+                          padding: '12px 14px',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid #f0f0f0',
                           backgroundColor: suggestion.type === 'vehicle' ? '#e3f2fd' : 'transparent',
-                          borderLeft: suggestion.type === 'vehicle' ? '3px solid #3498db' : 'none',
-                          paddingLeft: suggestion.type === 'vehicle' ? '12px' : '0'
+                          fontWeight: suggestion.type === 'vehicle' ? 600 : 500,
+                          fontSize: '13px',
+                          transition: 'background 0.2s'
                         }}
+                        onMouseEnter={(e) => e.target.style.background = suggestion.type === 'vehicle' ? '#bbdefb' : '#f5f5f5'}
+                        onMouseLeave={(e) => e.target.style.background = suggestion.type === 'vehicle' ? '#e3f2fd' : 'transparent'}
                       >
-                        <div className={styles.suggestionText}>
-                          {suggestion.type === 'vehicle' ? (
-                            <span style={{ fontWeight: '500' }}>{suggestion.display_name}</span>
-                          ) : (
-                            suggestion.display_name
-                          )}
-                        </div>
+                        {suggestion.display_name}
                       </div>
                     ))}
                   </div>
                 )}
               </div>
               {endCoords && (
-                <div className={styles.geocodedInfo}>
+                <div style={{ fontSize: '12px', color: '#27ae60', marginTop: '8px', fontWeight: 600 }}>
                   ✓ {endCoords.display_name || `${endCoords.latitude.toFixed(4)}, ${endCoords.longitude.toFixed(4)}`}
                 </div>
               )}
             </div>
 
-            {error && <div className={styles.error}>{error}</div>}
+            {error && <div style={{ fontSize: '13px', color: '#c0392b', marginBottom: '16px', padding: '10px 12px', background: '#fadbd8', borderRadius: '8px', fontWeight: 600 }}>{error}</div>}
 
             <button
               onClick={calculateRoute}
               disabled={loading || !startCoords || !endCoords}
-              className={styles.calculateButton}
+              style={{
+                width: '100%',
+                padding: '12px 20px',
+                background: loading || !startCoords || !endCoords ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '10px',
+                cursor: loading || !startCoords || !endCoords ? 'not-allowed' : 'pointer',
+                fontWeight: 700,
+                fontSize: '14px',
+                transition: 'all 0.2s'
+              }}
             >
-              {loading ? 'Calculating...' : 'Get Directions'}
+              {loading ? '⏳ Calculating...' : '🚗 Get Directions'}
             </button>
 
             {/* Route Comparison */}
             {routes && (
-              <div style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid #eee' }}>
-                <h3 style={{ marginBottom: '1rem' }}>Route Options</h3>
+              <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #e0e0e0' }}>
+                <h4 style={{ margin: '0 0 16px 0', fontSize: '13px', fontWeight: 700, color: '#222' }}>Route Options</h4>
                 {selectedRoute && (
-                  <div style={{ fontSize: '13px', color: '#666', lineHeight: '1.6' }}>
-                    <strong>{selectedRoute === 'fastest' ? '⚡ Fastest' : '🛡️ Safe'} Route</strong>
-                    <div>Distance: {selectedRoute === 'fastest' ? routes.fastestRoute.distance.toFixed(1) : routes.safeRoute.distance.toFixed(1)} km</div>
-                    <div>Duration: {selectedRoute === 'fastest' ? Math.round(routes.fastestRoute.duration) : Math.round(routes.safeRoute.duration)} min</div>
+                  <div style={{ fontSize: '13px', color: '#666', lineHeight: '1.8', marginBottom: '12px', padding: '12px', background: '#f9f9f9', borderRadius: '8px' }}>
+                    <div style={{ fontWeight: 700, marginBottom: '8px', color: '#222' }}>{selectedRoute === 'fastest' ? '⚡ Fastest' : '🛡️ Safe'} Route</div>
+                    <div>📏 Distance: {selectedRoute === 'fastest' ? routes.fastestRoute.distance.toFixed(1) : routes.safeRoute.distance.toFixed(1)} km</div>
+                    <div>⏱️ Duration: {selectedRoute === 'fastest' ? Math.round(routes.fastestRoute.duration) : Math.round(routes.safeRoute.duration)} min</div>
                     {selectedRoute === 'fastest' && routeRisks.fastest && (
-                      <div style={{ marginTop: '0.5rem' }}>
-                        Risk: {getRiskLevel(routeRisks.fastest.risk_score)} ({(routeRisks.fastest.risk_score * 100).toFixed(0)}%)
-                      </div>
+                      <div style={{ marginTop: '8px' }}>Risk: {getRiskLevel(routeRisks.fastest.risk_score)} ({(routeRisks.fastest.risk_score * 100).toFixed(0)}%)</div>
                     )}
                     {selectedRoute === 'safe' && routeRisks.safe && (
-                      <div style={{ marginTop: '0.5rem' }}>
-                        Risk: {getRiskLevel(routeRisks.safe.risk_score)} ({(routeRisks.safe.risk_score * 100).toFixed(0)}%)
-                      </div>
+                      <div style={{ marginTop: '8px' }}>Risk: {getRiskLevel(routeRisks.safe.risk_score)} ({(routeRisks.safe.risk_score * 100).toFixed(0)}%)</div>
                     )}
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   <button
                     onClick={() => setSelectedRoute('fastest')}
                     style={{
-                      padding: '0.5rem 1rem',
+                      padding: '10px 12px',
                       fontSize: '12px',
-                      background: selectedRoute === 'fastest' ? '#1976d2' : '#ddd',
+                      background: selectedRoute === 'fastest' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#f0f0f0',
                       color: selectedRoute === 'fastest' ? 'white' : '#666',
                       border: 'none',
-                      borderRadius: '4px',
+                      borderRadius: '8px',
                       cursor: 'pointer',
-                      flex: 1,
+                      fontWeight: 600,
+                      transition: 'all 0.2s'
                     }}
                   >
                     Fastest
@@ -415,14 +484,15 @@ export default function HeatmapPage() {
                   <button
                     onClick={() => setSelectedRoute('safe')}
                     style={{
-                      padding: '0.5rem 1rem',
+                      padding: '10px 12px',
                       fontSize: '12px',
-                      background: selectedRoute === 'safe' ? '#43a047' : '#ddd',
+                      background: selectedRoute === 'safe' ? 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' : '#f0f0f0',
                       color: selectedRoute === 'safe' ? 'white' : '#666',
                       border: 'none',
-                      borderRadius: '4px',
+                      borderRadius: '8px',
                       cursor: 'pointer',
-                      flex: 1,
+                      fontWeight: 600,
+                      transition: 'all 0.2s'
                     }}
                   >
                     Safe
@@ -430,10 +500,16 @@ export default function HeatmapPage() {
                 </div>
               </div>
             )}
-          </section>
+          </div>
 
           {/* Right Panel - Combined Map */}
-          <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid #ddd', background: 'white' }}>
+          <div style={{ 
+            borderRadius: '14px', 
+            overflow: 'hidden', 
+            border: '1px solid rgba(255,255,255,0.3)', 
+            background: '#fff',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.15)'
+          }}>
             <CombinedHeatmapRoute
               routes={routes}
               selectedRoute={selectedRoute}
@@ -442,7 +518,7 @@ export default function HeatmapPage() {
             />
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

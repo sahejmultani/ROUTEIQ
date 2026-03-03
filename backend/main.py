@@ -1585,7 +1585,7 @@ async def calculate_route(
             if fastest_data.get("code") != "Ok" or not fastest_data.get("routes"):
                 return {"error": "Route calculation failed", "code": fastest_data.get("code")}
 
-            # Fetch incident markers (reuse logic from get_incident_locations)
+            # Fetch incident markers using advanced risk analysis (better detection)
             try:
                 login_result = geotab_login()
                 credentials = login_result["credentials"]
@@ -1595,57 +1595,100 @@ async def calculate_route(
             else:
                 from geotab_helpers import GEOTAB_BASE_URL
                 import requests
+                from datetime import datetime, timedelta, timezone
+                
+                # Get all vehicles for incident data (last 30 days of incidents)
                 vehicles = fetch_vehicles(session_id, credentials)
-                alerts = []
-                for vehicle in vehicles[:50]:
+                incident_alerts = []
+                
+                # Cutoff for last 30 days of data
+                cutoff_time = datetime.now(timezone.utc) - timedelta(days=30)
+                
+                for vehicle in vehicles:
                     vehicle_id_val = vehicle.get("id")
-                    logrecord_payload = {
-                        "method": "Get",
-                        "params": {
-                            "typeName": "LogRecord",
-                            "credentials": credentials,
-                            "search": {"deviceSearch": {"id": vehicle_id_val}},
-                            "resultsLimit": 500,
-                            "sortBy": "dateTime desc"
-                        },
-                        "id": 1,
-                        "jsonrpc": "2.0",
-                        "sessionId": session_id
-                    }
                     try:
+                        # Fetch log records for this vehicle
+                        logrecord_payload = {
+                            "method": "Get",
+                            "params": {
+                                "typeName": "LogRecord",
+                                "credentials": credentials,
+                                "search": {"deviceSearch": {"id": vehicle_id_val}},
+                                "resultsLimit": 1000,
+                                "sortBy": "dateTime desc"
+                            },
+                            "id": 1,
+                            "jsonrpc": "2.0",
+                            "sessionId": session_id
+                        }
                         resp = requests.post(GEOTAB_BASE_URL, json=logrecord_payload, timeout=10)
                         logrecords = resp.json().get("result", [])
                     except Exception:
                         continue
+                    
+                    if not logrecords:
+                        continue
+                    
+                    # Sort by time (oldest first)
                     logrecords = sorted(logrecords, key=lambda x: x.get("dateTime", ""), reverse=False)
+                    
+                    # Filter valid records with location and speed data
                     filtered_records = []
                     for record in logrecords:
                         try:
-                            if record.get("latitude") and record.get("longitude") and record.get("speed") is not None:
+                            if (record.get("latitude") and record.get("longitude") and 
+                                record.get("speed") is not None):
+                                # Filter by time if date is available
+                                if record.get("dateTime"):
+                                    record_dt = datetime.fromisoformat(record["dateTime"].replace('Z', '+00:00'))
+                                    if record_dt < cutoff_time:
+                                        continue
                                 filtered_records.append(record)
                         except:
                             pass
+                    
                     if len(filtered_records) < 2:
                         continue
+                    
+                    # Detect incidents using multiple criteria (better detection)
                     for i in range(1, len(filtered_records)):
                         prev = filtered_records[i - 1]
                         curr = filtered_records[i]
+                        
                         curr_speed = curr.get("speed", 0)
                         prev_speed = prev.get("speed", 0)
                         speed_change = abs(curr_speed - prev_speed)
+                        
                         lat = curr.get("latitude")
                         lng = curr.get("longitude")
+                        
+                        # Multiple incident detection criteria
                         is_incident = False
+                        incident_severity = 0
+                        
+                        # Aggressive speeding (> 80 km/h)
                         if curr_speed > 80:
                             is_incident = True
-                        elif speed_change >= 15:
+                            incident_severity = max(incident_severity, (curr_speed - 80) / 50.0)
+                        
+                        # Harsh braking (speed drop > 15 km/h in short time)
+                        if speed_change >= 15 and prev_speed > 20:
                             is_incident = True
+                            incident_severity = max(incident_severity, min(1.0, speed_change / 30.0))
+                        
+                        # Rapid acceleration (speed increase > 20 km/h)
+                        if speed_change >= 20 and curr_speed > prev_speed:
+                            is_incident = True
+                            incident_severity = max(incident_severity, min(1.0, speed_change / 40.0))
+                        
                         if is_incident:
-                            alerts.append({
+                            incident_alerts.append({
                                 "latitude": lat,
-                                "longitude": lng
+                                "longitude": lng,
+                                "speed": curr_speed,
+                                "severity": min(incident_severity, 1.0),
+                                "type": "speeding" if curr_speed > 80 else ("braking" if speed_change >= 15 and prev_speed > 20 else "acceleration")
                             })
-                incident_alerts = alerts
 
             # Helper: Haversine distance
             import math
@@ -1659,27 +1702,52 @@ async def calculate_route(
                 c = 2 * math.asin(math.sqrt(a))
                 return R * c
 
-            # Score each route by number of incident markers within 1km
+            # Score each route by weighted incident proximity
+            # - Count incidents within proximity radius
+            # - Weight by severity (distance decay: closer incidents = higher weight)
+            # - Prefer routes that avoid high-severity incidents better
             best_safe_idx = 0
-            min_incidents = float('inf')
+            min_risk_score = float('inf')
+            proximity_radius = 2.0  # km - incidents within this distance affect route score
+            
+            route_scores = []
             for idx, route in enumerate(fastest_data["routes"]):
                 coords = route.get("geometry", {}).get("coordinates", [])
                 if not coords:
+                    route_scores.append(float('inf'))
                     continue
+                
                 route_latlngs = [[c[1], c[0]] for c in coords]
-                count = 0
+                
+                # Calculate weighted risk score for this route
+                risk_score = 0
+                incident_count = 0
+                
                 for incident in incident_alerts:
                     inc_lat = incident["latitude"]
                     inc_lng = incident["longitude"]
-                    # Find closest point on route
+                    inc_severity = incident.get("severity", 0.5)
+                    
+                    # Find minimum distance from incident to any point on route
                     min_dist = min(distance_km(inc_lat, inc_lng, wp[0], wp[1]) for wp in route_latlngs)
-                    if min_dist <= 1.0:
-                        count += 1
-                if count < min_incidents:
-                    min_incidents = count
+                    
+                    # Only consider incidents within proximity radius
+                    if min_dist <= proximity_radius:
+                        incident_count += 1
+                        # Severity weighting: closer incidents have higher impact
+                        # Distance decay: exponential decay from 1.0 at 0km to near 0 at proximity_radius
+                        distance_weight = math.exp(-(min_dist ** 2) / (proximity_radius ** 2))
+                        weighted_incident_risk = inc_severity * distance_weight
+                        risk_score += weighted_incident_risk
+                
+                route_scores.append(risk_score)
+                
+                # Track the safest route
+                if risk_score < min_risk_score:
+                    min_risk_score = risk_score
                     best_safe_idx = idx
 
-            # Fastest = first route, safest = route with fewest incidents
+            # Fastest = first route, safest = route with lowest weighted incident risk
             fastest_route = fastest_data["routes"][0]
             fastest_coordinates = []
             if fastest_route.get("geometry", {}).get("coordinates"):
