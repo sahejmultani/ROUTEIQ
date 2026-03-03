@@ -1,6 +1,8 @@
-# RouteIQ
+# RouteIQ - Geotab Vibe Code Competition
 
-This project consists of a backend (Python) and a frontend (Next.js/React) for RouteIQ.
+RouteIQ is an intelligent route optimization and fleet safety analytics platform that leverages real-time GPS and telematics data to identify high-risk driving locations and suggest safer alternatives. By analyzing multi-criteria incidents (speeding, harsh braking, rapid acceleration, and sharp turns) across your fleet, RouteIQ helps you reduce accident risk and optimize driver safety through data-driven route recommendations.
+
+This project consists of a backend (Python FastAPI) and a frontend (Next.js/React) for RouteIQ.
 
 ## Prerequisites
 - Python 3.8+

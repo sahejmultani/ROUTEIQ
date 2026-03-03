@@ -109,16 +109,45 @@ export default function HeatmapPage() {
   const selectEndSuggestion = (suggestion) => {
     if (suggestion.type === 'vehicle') {
       setEndAddress(suggestion.display_name);
-      setEndCoords({
-        latitude: suggestion.vehicle.latitude,
-        longitude: suggestion.vehicle.longitude,
-        display_name: suggestion.display_name
-      });
+      handleUseVehicleLocationForEnd(suggestion.id);
     } else {
       setEndAddress(suggestion.display_name);
       setEndCoords(suggestion);
     }
     setShowEndSuggestions(false);
+  };
+
+  const handleUseVehicleLocationForEnd = async (vehicleId) => {
+    try {
+      const response = await fetch(`${API_URL}/api/vehicle/${vehicleId}`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+      if (!response.ok) throw new Error('Failed to fetch vehicle location');
+      const data = await response.json();
+      const dashboard = data.dashboard;
+      
+      // Check if position is available as an object with lat/lng
+      const position = dashboard?.lastReportedPosition;
+      const hasValidPosition = position && typeof position === 'object' && position.latitude && position.longitude;
+      
+      // Fallback to direct latitude/longitude fields
+      const latitude = hasValidPosition ? position.latitude : dashboard?.latitude;
+      const longitude = hasValidPosition ? position.longitude : dashboard?.longitude;
+      
+      if (latitude && longitude) {
+        setEndCoords({
+          latitude: latitude,
+          longitude: longitude,
+          display_name: `${dashboard?.vehicleName || 'Vehicle'} (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+        });
+        setError(null);
+      } else {
+        setError('Vehicle location not available');
+      }
+    } catch (err) {
+      setError(`Failed to get vehicle location: ${err.message}`);
+    }
   };
 
   const getAddressSuggestionsWithVehicles = async (query) => {
@@ -175,14 +204,23 @@ export default function HeatmapPage() {
       });
       if (!response.ok) throw new Error('Failed to fetch vehicle location');
       const data = await response.json();
-      const position = data.dashboard?.lastReportedPosition;
-      if (position) {
+      const dashboard = data.dashboard;
+      
+      // Check if position is available as an object with lat/lng
+      const position = dashboard?.lastReportedPosition;
+      const hasValidPosition = position && typeof position === 'object' && position.latitude && position.longitude;
+      
+      // Fallback to direct latitude/longitude fields
+      const latitude = hasValidPosition ? position.latitude : dashboard?.latitude;
+      const longitude = hasValidPosition ? position.longitude : dashboard?.longitude;
+      
+      if (latitude && longitude) {
         setStartCoords({
-          latitude: position.latitude,
-          longitude: position.longitude,
-          display_name: `${data.name} (${position.latitude.toFixed(4)}, ${position.longitude.toFixed(4)})`,
+          latitude: latitude,
+          longitude: longitude,
+          display_name: `${dashboard?.vehicleName || 'Vehicle'} (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
         });
-        setStartAddress(`${data.name} Location`);
+        setStartAddress(`${dashboard?.vehicleName || 'Vehicle'} Location`);
         setSelectedVehicle(vehicleId);
         setError(null);
       } else {

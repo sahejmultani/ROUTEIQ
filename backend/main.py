@@ -1026,11 +1026,20 @@ def get_incident_locations(time_period_hours: int = 72):
     from geotab_helpers import GEOTAB_BASE_URL
     import requests
     from datetime import datetime, timedelta
+    import time
+    
+    start_time = time.time()
+    max_duration = 15  # 15 second timeout for entire endpoint
     
     vehicles = fetch_vehicles(session_id, credentials)
     alerts = []
     
-    for vehicle in vehicles[:50]:
+    for vehicle in vehicles[:30]:  # Reduced from 50 to 30 vehicles
+        # Check timeout
+        if time.time() - start_time > max_duration:
+            print(f"Incident collection timeout reached after {time.time() - start_time:.1f}s")
+            break
+        
         vehicle_id_val = vehicle.get("id")
         vehicle_name = vehicle.get("name", "Unknown")
         
@@ -1041,7 +1050,7 @@ def get_incident_locations(time_period_hours: int = 72):
                 "typeName": "LogRecord",
                 "credentials": credentials,
                 "search": {"deviceSearch": {"id": vehicle_id_val}},
-                "resultsLimit": 500,
+                "resultsLimit": 200,  # Reduced from 500 to 200
                 "sortBy": "dateTime desc"
             },
             "id": 1,
@@ -1050,7 +1059,7 @@ def get_incident_locations(time_period_hours: int = 72):
         }
         
         try:
-            resp = requests.post(GEOTAB_BASE_URL, json=logrecord_payload, timeout=10)
+            resp = requests.post(GEOTAB_BASE_URL, json=logrecord_payload, timeout=5)
             logrecords = resp.json().get("result", [])
         except Exception:
             continue
