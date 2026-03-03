@@ -631,6 +631,63 @@ class HeatCluster(BaseModel):
     speed_excess_count: int
     speed_deficit_count: int
 
+# Cache for posted road speeds to avoid repeated API calls
+_posted_speed_cache = {}
+
+def get_posted_road_speed(lat, lng, session_id, credentials):
+    """
+    Fetch actual posted road speed limit from Geotab using coordinates.
+    Returns the posted speed limit in km/h. Falls back to estimation if API fails or times out.
+    Uses a local cache to avoid repeated API calls for the same location.
+    """
+    # Create cache key (rounded to reduce cache bloat)
+    cache_key = f"{round(lat, 3)}_{round(lng, 3)}"
+    
+    # Check cache first (very fast)
+    if cache_key in _posted_speed_cache:
+        cached_value = _posted_speed_cache[cache_key]
+        return cached_value if cached_value > 0 else None
+    
+    try:
+        from geotab_helpers import GEOTAB_BASE_URL
+        import requests
+        
+        # Request posted road speed from Geotab API with SHORT timeout
+        payload = {
+            "method": "Get",
+            "params": {
+                "typeName": "PostedRoadSpeed",
+                "credentials": credentials,
+                "search": {
+                    "coordinates": [{
+                        "x": lng,  # Longitude is X
+                        "y": lat   # Latitude is Y
+                    }]
+                },
+                "postedRoadSpeedOptions": "None"  # Use all available data
+            },
+            "id": 1,
+            "jsonrpc": "2.0",
+            "sessionId": session_id
+        }
+        
+        # Very short timeout to not block the analysis
+        resp = requests.post(GEOTAB_BASE_URL, json=payload, timeout=2)
+        result = resp.json().get("result", [])
+        
+        if result and isinstance(result, list) and len(result) > 0:
+            # Get the first result's speed limit (in km/h)
+            posted_speed = result[0].get("postedSpeed")
+            if posted_speed and posted_speed > 0:
+                _posted_speed_cache[cache_key] = posted_speed
+                return posted_speed
+    except:
+        pass  # Silently fail and use estimate
+    
+    # Cache that we couldn't find a posted speed (use 0 as marker)
+    _posted_speed_cache[cache_key] = 0
+    return None
+
 @app.get("/api/advanced_risk_analysis")
 def get_advanced_risk_analysis(
     vehicle_id: Optional[str] = None,
@@ -792,15 +849,22 @@ def get_advanced_risk_analysis(
             lng = curr.get("longitude")
             timestamp = curr.get("dateTime", "")
             
-            # Calculate area speed limit
+            # Calculate area speed limit - use estimation by default for speed
             area_start = max(0, i - 15)
             area_end = min(len(filtered_records), i + 15)
             area_speeds = [r.get("speed", 0) for r in filtered_records[area_start:area_end]]
-            estimated_limit = estimate_speed_limit_v2(area_speeds)
+            
+            # Use estimation as primary method (faster)
+            speed_limit = estimate_speed_limit_v2(area_speeds)
+            speed_limit_source = "estimated"
+            
+            # Note: To get actual posted speeds, use the get_posted_road_speed() function
+            # but it adds significant latency. Current implementation uses fast estimation
+            # with optional integration to Geotab PostedRoadSpeed API for future enhancement.
             
             # Alert 1: Aggressive Speeding (> 20% over limit)
-            if curr_speed > 5 and curr_speed > estimated_limit * 1.20:
-                excess = curr_speed - estimated_limit
+            if curr_speed > 5 and curr_speed > speed_limit * 1.20:
+                excess = curr_speed - speed_limit
                 if excess > 5:
                     alerts.append({
                         "vehicle_id": vehicle_id_val,
@@ -810,13 +874,14 @@ def get_advanced_risk_analysis(
                         "timestamp": timestamp,
                         "location": {"latitude": lat, "longitude": lng},
                         "current_speed": round(curr_speed, 1),
-                        "estimated_limit": round(estimated_limit, 1),
-                        "excess_speed": round(excess, 1)
+                        "estimated_limit": round(speed_limit, 1),
+                        "excess_speed": round(excess, 1),
+                        "speed_limit_source": speed_limit_source
                     })
             
-            # Alert 2: Going Too Slow (< 50% of estimated limit in non-traffic)
-            if estimated_limit > 60 and curr_speed > 0 and curr_speed < estimated_limit * 0.5:
-                deficit = estimated_limit - curr_speed
+            # Alert 2: Going Too Slow (< 50% of speed limit in non-traffic)
+            if speed_limit > 60 and curr_speed > 0 and curr_speed < speed_limit * 0.5:
+                deficit = speed_limit - curr_speed
                 if deficit > 20:
                     alerts.append({
                         "vehicle_id": vehicle_id_val,
@@ -826,8 +891,9 @@ def get_advanced_risk_analysis(
                         "timestamp": timestamp,
                         "location": {"latitude": lat, "longitude": lng},
                         "current_speed": round(curr_speed, 1),
-                        "expected_speed": round(estimated_limit, 1),
-                        "deficit": round(deficit, 1)
+                        "expected_speed": round(speed_limit, 1),
+                        "deficit": round(deficit, 1),
+                        "speed_limit_source": speed_limit_source
                     })
             
             # Alert 3: Harsh Braking - consider time taken to stop
