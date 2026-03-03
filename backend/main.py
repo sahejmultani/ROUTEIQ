@@ -634,19 +634,21 @@ class HeatCluster(BaseModel):
 @app.get("/api/advanced_risk_analysis")
 def get_advanced_risk_analysis(
     vehicle_id: Optional[str] = None,
-    time_period_hours: int = 72,
+    date_filter: str = "all",
+    specific_date: str = "",
     min_speed_change: float = 5.0
 ):
     """
     Advanced risk analysis with:
     - Vehicle filtering (optional)
-    - Time filtering
+    - Time filtering by date ranges
     - Harsh braking and sharp turn detection
     - Aggressive speeding/slow driving detection
     
     Args:
         vehicle_id: Filter to specific vehicle (optional, analyzes all if None)
-        time_period_hours: Analyze data from last N hours (default 72)
+        date_filter: Filter type - 'all', 'today', 'lastWeek', 'lastMonth' (default 'all')
+        specific_date: Specific date in YYYY-MM-DD format (when date_filter is not a preset)
         min_speed_change: Minimum km/h change to flag as sudden (default 5)
     """
     try:
@@ -667,7 +669,25 @@ def get_advanced_risk_analysis(
     if vehicle_id:
         vehicles = [v for v in vehicles if v.get("id") == vehicle_id]
     
-    cutoff_time = datetime.utcnow() - timedelta(hours=time_period_hours)
+    # Calculate cutoff_time based on date_filter
+    from datetime import timezone
+    cutoff_time = None
+    if date_filter == 'all':
+        cutoff_time = None  # No time filtering
+    elif date_filter == 'today':
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
+    elif date_filter == 'lastWeek':
+        cutoff_time = datetime.now(timezone.utc) - timedelta(days=7)
+    elif date_filter == 'lastMonth':
+        cutoff_time = datetime.now(timezone.utc) - timedelta(days=30)
+    else:
+        # specific_date provided in YYYY-MM-DD format
+        try:
+            # Parse as naive date and convert to timezone-aware datetime at start of day UTC
+            specific_dt = datetime.fromisoformat(specific_date)
+            cutoff_time = specific_dt.replace(tzinfo=timezone.utc)
+        except:
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
     alerts = []
     vehicle_speed_stats = {}
     
@@ -699,12 +719,43 @@ def get_advanced_risk_analysis(
         # Sort chronologically
         logrecords = sorted(logrecords, key=lambda x: x.get("dateTime", ""), reverse=False)
         
-        # Collect valid records
+        # Collect valid records with time filtering
         filtered_records = []
+        upper_limit = None
+        if specific_date and date_filter not in ['all', 'today', 'lastWeek', 'lastMonth']:
+            # For specific date, also set upper limit to end of that day
+            try:
+                from datetime import timezone
+                specific_dt = datetime.fromisoformat(specific_date)
+                upper_limit = (specific_dt + timedelta(days=1)).replace(tzinfo=timezone.utc)
+            except:
+                pass
+        
         for record in logrecords:
             try:
                 if record.get("latitude") and record.get("longitude") and record.get("speed") is not None:
-                    filtered_records.append(record)
+                    # Parse record datetime (timezone-aware)
+                    try:
+                        record_time = datetime.fromisoformat(record.get("dateTime", "").replace("Z", "+00:00"))
+                    except:
+                        # Skip records with invalid timestamps
+                        continue
+                    
+                    # Filter by time period (only if cutoff_time is set)
+                    if cutoff_time is None:
+                        # No time filtering - include all records
+                        if upper_limit is None:
+                            filtered_records.append(record)
+                        else:
+                            # For specific date, check upper limit
+                            if record_time < upper_limit:
+                                filtered_records.append(record)
+                    else:
+                        # Time filtering is active - check if within range
+                        if record_time >= cutoff_time:
+                            # If upper_limit is set (specific date), only include if before upper_limit
+                            if upper_limit is None or record_time < upper_limit:
+                                filtered_records.append(record)
             except:
                 pass
         
@@ -880,7 +931,8 @@ def get_advanced_risk_analysis(
         "vehicle_id": vehicle_id,
         "vehicle_stats": vehicle_speed_stats,
         "summary": {
-            "time_period_hours": time_period_hours,
+            "date_filter": date_filter,
+            "specific_date": specific_date,
             "total_alerts": len(alerts),
             "aggressive_speeding": sum(1 for a in alerts if a["alert_type"] == "Aggressive Speeding"),
             "slow_driving": sum(1 for a in alerts if a["alert_type"] == "Slow Driving"),

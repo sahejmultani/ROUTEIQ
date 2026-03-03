@@ -47,7 +47,8 @@ export default function RiskAnalysis() {
   const [vehicles, setVehicles] = useState([]);
   const [selectedVehicle, setSelectedVehicle] = useState('');
   const [loading, setLoading] = useState(true);
-  const [timePeriod, setTimePeriod] = useState(72);
+  const [dateFilter, setDateFilter] = useState('all');  // 'all', 'today', 'lastWeek', 'lastMonth', or specific date
+  const [specificDate, setSpecificDate] = useState('');
   const [addressCache, setAddressCache] = useState({});
   const [alertAddresses, setAlertAddresses] = useState({});
 
@@ -71,12 +72,15 @@ export default function RiskAnalysis() {
     fetchVehicles();
   }, []);
 
-  const fetchAnalysis = async (hours, vehicleId = null) => {
+  const fetchAnalysis = async (filter, vehicleId = null, date = '') => {
     setLoading(true);
     try {
-      let url = `http://localhost:8000/api/advanced_risk_analysis?time_period_hours=${hours}`;
+      let url = `http://localhost:8000/api/advanced_risk_analysis?date_filter=${filter}`;
       if (vehicleId) {
         url += `&vehicle_id=${vehicleId}`;
+      }
+      if (date) {
+        url += `&specific_date=${date}`;
       }
       
       const response = await fetch(url);
@@ -102,15 +106,15 @@ export default function RiskAnalysis() {
     }
   };
 
-  // Fetch analysis when vehicle selection changes
+  // Fetch analysis when vehicle selection or date filter changes
   useEffect(() => {
     if (selectedVehicle) {
-      fetchAnalysis(timePeriod, selectedVehicle);
+      fetchAnalysis(dateFilter, selectedVehicle, specificDate);
     }
-  }, [selectedVehicle]);
+  }, [selectedVehicle, dateFilter, specificDate]);
 
   const handleRefresh = () => {
-    fetchAnalysis(timePeriod, selectedVehicle);
+    fetchAnalysis(dateFilter, selectedVehicle, specificDate);
   };
 
   const getSeverityColor = (severity, alertType) => {
@@ -176,15 +180,40 @@ export default function RiskAnalysis() {
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '5px', color: '#666' }}>
-              Time Period (hours)
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '8px', color: '#666' }}>
+              Date Filter
             </label>
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+              {['all', 'today', 'lastWeek', 'lastMonth'].map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => {
+                    setDateFilter(filter);
+                    setSpecificDate('');
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    background: dateFilter === filter ? '#3498db' : '#ecf0f1',
+                    color: dateFilter === filter ? '#fff' : '#333',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: dateFilter === filter ? 600 : 500,
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {filter === 'all' ? 'All' : filter === 'today' ? 'Today' : filter === 'lastWeek' ? 'Last Week' : 'Last Month'}
+                </button>
+              ))}
+            </div>
             <input
-              type="number"
-              min="1"
-              max="720"
-              value={timePeriod}
-              onChange={(e) => setTimePeriod(Math.max(1, parseInt(e.target.value) || 24))}
+              type="date"
+              value={specificDate}
+              onChange={(e) => {
+                setSpecificDate(e.target.value);
+                setDateFilter('');
+              }}
               style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px' }}
             />
           </div>
@@ -220,8 +249,8 @@ export default function RiskAnalysis() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '30px' }}>
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px #eee' }}>
               <div style={{ fontSize: '12px', color: '#999', fontWeight: 600, marginBottom: '5px' }}>TOTAL INCIDENTS</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#e74c3c' }}>{data.summary.total_alerts.toLocaleString()}</div>
-              <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>Last {data.summary.time_period_hours}h</div>
+              <div style={{ fontSize: '28px', fontWeight: 700, color: '#e74c3c' }}>{(data.summary?.total_alerts || 0).toLocaleString()}</div>
+              <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>Last {data.summary?.time_period_hours || 72}h</div>
             </div>
 
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px #eee' }}>
@@ -301,7 +330,7 @@ export default function RiskAnalysis() {
                           {alert.alert_type === 'Sharp Turn' && `${alert.turn_angle}° turn at ${alert.speed_during_turn} km/h`}
                         </td>
                         <td style={{ padding: '10px', color: '#999', fontSize: '12px' }}>
-                          {new Date(alert.timestamp).toLocaleTimeString()}
+                          {new Date(alert.timestamp).toLocaleString()}
                         </td>
                       </tr>
                     ))}
